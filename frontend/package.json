@@ -1,0 +1,43 @@
+{
+  "name": "puffsql",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "postinstall": "node scripts/patch-qp.mjs"
+  },
+  "dependencies": {
+    "@antv/layout": "^2.0.0",
+    "@antv/x6": "^3.1.8",
+    "@antv/x6-vue-shape": "^3.0.2",
+    "html-query-plan": "^2.6.1",
+    "marked": "^18.0.13",
+    "monaco-editor": "^0.56.0",
+    "pinia": "^3.0.1",
+    "sql-formatter": "^15.8.2",
+    "tabulator-tables": "^6.5.3",
+    "vue": "^3.5.13",
+    "vue-i18n": "^11.4.2"
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7.54",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.5",
+    "vue-tsc": "^2.2.0"
+  },
+  "overrides": {
+    "brace-expansion": "^2.1.7",
+    "dompurify": "^3.4.17",
+    "postcss-selector-parser": "^7.1.7",
+    "source-map-js": "^1.2.2"
+  }
+}

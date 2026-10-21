@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "PuffSQL",
+  "outputfilename": "PuffSQL",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "PuffSQL Team",
+    "email": ""
+  },
+  "info": {
+    "companyName": "PuffSQL",
+    "productName": "PuffSQL",
+    "productVersion": "0.3.0",
+    "copyright": "Copyright © 2026 PuffSQL Team",
+    "comments": "Lightweight Microsoft SQL Server desktop client"
+  }
+}

@@ -1,0 +1,888 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* The title bar opts into native dragging. Interactive descendants must explicitly opt out
+     because CSS custom properties inherit into buttons, inputs and menu items. */
+  :where(button, input, select, textarea, a, [role="button"], [role="menuitem"], [contenteditable="true"]) {
+    --wails-draggable: no-drag;
+  }
+
+  :root {
+    --app-font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei UI", "Noto Sans TC", sans-serif;
+    color-scheme: light;
+
+    /* ==========================================================================
+       Light Mode Semantic Palette (Channels for rgb(var(...) / <alpha>))
+       Primary design: the canvas is white, panel headers and tab strips sit one notch below it,
+       and the chrome (title bar, sidebars, toolbars, status bar) is the palette's 50 step. Row
+       hover, active rows and inset wells deepen from there; borders are hairlines on the 200 step.
+       `--color-raised` is white like the canvas: overlays separate from it through a 1px outline
+       and a shadow, not by being brighter.
+       Text steps (100-600) are the palette's 950→500 ramp, so the muted step keeps >= 4.5:1 on
+       every surface above.
+       These values mirror buildThemeTokens(DEFAULT_SURFACE, 'light') — the app ships one surface
+       palette (極簡純淨 / neutral); the runtime re-applies them on boot.
+       ========================================================================== */
+    --color-dark-950: 237 237 237;   /* Inset wells / code preview backdrop */
+    --color-dark-900: 255 255 255;   /* Main app canvas (editor, grid, results, inputs) */
+    --color-dark-850: 250 250 250;   /* Chrome (title bar, sidebar, toolbars, status bar) */
+    --color-dark-800: 253 253 253;   /* Panel headers, tab strips, secondary surface */
+    --color-dark-750: 239 239 239;   /* Row hover, active rows, subtle dividers */
+    --color-dark-700: 229 229 229;   /* Hairline borders / panel edges */
+    --color-dark-600: 115 115 115;   /* Separator / hover border (non-text only, >= 3:1) */
+    --color-dark-500: 82 82 82;      /* Muted text / placeholder */
+    --color-dark-400: 64 64 64;      /* Secondary text */
+    --color-dark-300: 38 38 38;      /* Body text */
+    --color-dark-200: 23 23 23;      /* High contrast text */
+    --color-dark-100: 10 10 10;      /* Brightest / prominent text */
+    --color-raised: 255 255 255;     /* Menus, dialogs, tooltips (outlined + shadowed) */
+
+    /* Theme-aware accent roles: light values clear 4.5:1 on the raised overlay surface, on the
+       panel surface (#e5e5e5) and on the 15-25% self-hue tints used by the status chips. */
+    --color-accent: 42 103 145;      /* Steel blue 700 - the single action colour */
+    --color-accent-fill: 42 103 145; /* Solid button fill (white label) */
+    --color-accent-fill-hover: 35 90 126;
+    --color-ok: 2 122 72;            /* Emerald 700 */
+    --color-danger: 180 35 24;       /* Rose 700 */
+    --color-warn: 169 67 6;          /* Amber 700 (darkened for the 25% chip tint) */
+    --color-info: 42 103 145;        /* Same steel blue: only one accent in the product */
+    --color-plan: 105 65 198;        /* Violet 700 */
+    --color-er: 14 112 144;          /* Cyan 700 */
+    --color-structure: 53 56 205;    /* Indigo 700 */
+
+    /* The only two shadows the minimal design allows: floating layers (menus, popovers,
+       tooltips) and dialogs. Panels, cards, toolbars and grids are separated by 1px borders. */
+    --shadow-raised: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.08);
+    --shadow-overlay: 0 8px 24px rgba(16, 24, 40, 0.12);
+  }
+
+  html.dark,
+  .dark {
+    color-scheme: dark;
+
+    /* ==========================================================================
+       Dark Mode Semantic Palette (neutral charcoal paired variant)
+       Surfaces only get lighter with elevation (canvas < chrome < panel < hover) and the palette's
+       hue is pulled 85% toward grey, so the dark shell never turns blue. Text steps keep the
+       palette's own ramp, which is neutral in every palette; the muted step keeps >= 4.5:1 on the
+       panel and raised surfaces.
+       These values mirror buildThemeTokens(DEFAULT_SURFACE, 'dark').
+       ========================================================================== */
+    --color-dark-950: 13 13 13;      /* Deepest dark (inset wells) */
+    --color-dark-900: 23 23 23;      /* #171717 Canvas (editor, grid, results) */
+    --color-dark-850: 29 29 29;      /* #1d1d1d Chrome (title bar, sidebar, toolbar, status bar) */
+    --color-dark-800: 35 35 35;      /* #232323 Panels, inputs, row hover */
+    --color-dark-750: 40 40 40;      /* #282828 Active rows, subtle dividers */
+    --color-dark-700: 60 60 60;      /* #3c3c3c Borders */
+    --color-dark-600: 115 115 115;   /* Separator / hover border (non-text only, >= 3:1) */
+    --color-dark-500: 163 163 163;   /* Muted text / placeholder */
+    --color-dark-400: 212 212 212;   /* Secondary text */
+    --color-dark-300: 229 229 229;   /* Body text */
+    --color-dark-200: 245 245 245;   /* High contrast text */
+    --color-dark-100: 250 250 250;   /* Brightest / prominent text */
+    --color-raised: 36 36 36;        /* #242424 Menus, dialogs, tooltips */
+
+    /* Theme-aware accent roles (dark values: >= 4.5:1 on #171717 and the raised surface) */
+    --color-accent: 140 184 218;     /* Steel blue 300 - the single action colour */
+    --color-accent-fill: 42 103 145; /* Solid button fill stays darker so white labels stay legible */
+    --color-accent-fill-hover: 35 90 126;
+    --color-ok: 71 205 137;          /* Emerald 400 */
+    --color-danger: 249 112 102;     /* Rose 400 */
+    --color-warn: 253 176 34;        /* Amber 400 */
+    --color-info: 140 184 218;       /* Same steel blue: only one accent in the product */
+    --color-plan: 182 146 246;       /* Violet 400 */
+    --color-er: 103 227 249;         /* Cyan 400 */
+    --color-structure: 164 188 253;  /* Indigo 300 (kept >= 4.5:1 on the raised dark surface) */
+
+    /* Same two shadows, deepened: a soft black wash over charcoal has to carry further to read
+       as elevation at all. */
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: var(--app-font-sans);
+    /* Let variable fonts pick the optical size for the rendered size instead of a single cut. */
+    font-optical-sizing: auto;
+  }
+
+  html.dark, body.dark, html.dark body {
+    background-color: rgb(var(--color-dark-900));
+    color: rgb(var(--color-dark-100));
+  }
+
+  html:not(.dark), html:not(.dark) body {
+    background-color: rgb(var(--color-dark-900));
+    color: rgb(var(--color-dark-100));
+  }
+
+  /* Custom Desktop Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  html.dark ::-webkit-scrollbar-track {
+    background: rgb(var(--color-dark-850));
+  }
+  html:not(.dark) ::-webkit-scrollbar-track {
+    background: rgb(var(--color-dark-850));
+  }
+
+  html.dark ::-webkit-scrollbar-thumb {
+    background: rgb(var(--color-dark-600));
+    border-radius: 4px;
+  }
+  html:not(.dark) ::-webkit-scrollbar-thumb {
+    background: rgb(var(--color-dark-600));
+    border-radius: 4px;
+  }
+
+  html.dark ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--color-dark-500));
+  }
+  html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--color-dark-500));
+  }
+}
+
+/* ==========================================================================
+   Monaco Editor Context Menu - Aligned with the app's SqMenu language
+   ========================================================================== */
+:root {
+  --vscode-cornerRadius-large: 0.375rem !important; /* 6px */
+  --vscode-cornerRadius-small: 0.25rem !important;  /* 4px */
+}
+
+/* 頂層容器 (Context View & Container) */
+.context-view,
+.context-view.monaco-component,
+.context-view.fixed {
+  font-family: inherit !important;
+  /* Monaco ships `.context-view` with `z-index: auto`, so everything the app layers on top — the
+     splitters (z-20), the header (z-30) — paints over the editor's right-click menu. Menus belong
+     on the app's menu layer, the one SqPopover (and therefore SqMenu) already uses. The `.fixed`
+     variant needs naming separately because its own `all: initial` would reset the z-index. */
+  z-index: 1200 !important;
+}
+
+.context-view .monaco-menu-container,
+.context-view.monaco-menu-container,
+.monaco-menu-container {
+  outline: none !important;
+  border: none !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 0.375rem !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* 核心滾動外殼 (Monaco Scrollable Element - Monaco 在此處寫了 inline styles) */
+.context-view .monaco-scrollable-element,
+.monaco-menu-container .monaco-scrollable-element {
+  border-radius: 0.375rem !important;
+  outline: none !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+html.dark .context-view .monaco-scrollable-element,
+.dark .context-view .monaco-scrollable-element,
+html.dark .monaco-menu-container .monaco-scrollable-element,
+.dark .monaco-menu-container .monaco-scrollable-element {
+  background-color: rgb(var(--color-dark-800)) !important;
+  border: 1px solid rgb(var(--color-dark-700)) !important;
+  color: rgb(var(--color-dark-200)) !important;
+}
+
+html:not(.dark) .context-view .monaco-scrollable-element,
+html:not(.dark) .monaco-menu-container .monaco-scrollable-element {
+  background-color: rgb(var(--color-raised)) !important;
+  border: 1px solid rgb(var(--color-dark-700)) !important;
+  color: rgb(var(--color-dark-300)) !important;
+}
+
+/* 內部 Menu 區塊 */
+.context-view .monaco-menu,
+.monaco-menu-container .monaco-menu {
+  border: none !important;
+  border-radius: 0.375rem !important;
+  background: transparent !important;
+  padding: 0.25rem !important;
+  min-width: 170px !important;
+  box-shadow: none !important;
+}
+
+.context-view .monaco-menu .monaco-action-bar.vertical,
+.monaco-menu-container .monaco-menu .monaco-action-bar.vertical {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+.context-view .monaco-menu .actions-container,
+.monaco-menu-container .monaco-menu .actions-container {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.125rem !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+}
+
+/* 項目外觀 (Action Item) */
+.context-view .monaco-action-bar.vertical .action-item,
+.monaco-menu-container .monaco-action-bar.vertical .action-item {
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1.25rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  transition: background-color 0.1s ease, color 0.1s ease !important;
+  border: none !important;
+  outline: none !important;
+}
+
+.context-view .monaco-action-bar.vertical .action-menu-item,
+.monaco-menu-container .monaco-action-bar.vertical .action-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 1.625rem !important;
+  padding: 0.3125rem 0.5rem !important;
+  border-radius: 0.25rem !important;
+  text-decoration: none !important;
+  color: inherit !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+/* 標籤文字 */
+.context-view .monaco-action-bar.vertical .action-label:not(.separator),
+.monaco-menu-container .monaco-action-bar.vertical .action-label:not(.separator) {
+  font-size: 0.75rem !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 1.25rem !important;
+}
+
+html.dark .context-view .monaco-action-bar.vertical .action-label:not(.separator),
+.dark .context-view .monaco-action-bar.vertical .action-label:not(.separator) {
+  color: rgb(var(--color-dark-200)) !important;
+}
+
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-label:not(.separator) {
+  color: rgb(var(--color-dark-300)) !important;
+}
+
+/* 懸停與焦點選取狀態 (Hover & Focused) */
+html.dark .context-view .monaco-action-bar.vertical .action-item.focused,
+html.dark .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled),
+html.dark .context-view .monaco-action-bar.vertical .action-item.focused > .action-menu-item,
+html.dark .context-view .monaco-action-bar.vertical .action-menu-item:focus,
+.dark .context-view .monaco-action-bar.vertical .action-item.focused,
+.dark .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled),
+.dark .context-view .monaco-action-bar.vertical .action-item.focused > .action-menu-item,
+.dark .context-view .monaco-action-bar.vertical .action-menu-item:focus {
+  background-color: rgb(var(--color-dark-750)) !important;
+  color: rgb(var(--color-dark-100)) !important;
+  outline: none !important;
+}
+
+html.dark .context-view .monaco-action-bar.vertical .action-item.focused .action-label,
+html.dark .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled) .action-label,
+.dark .context-view .monaco-action-bar.vertical .action-item.focused .action-label,
+.dark .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled) .action-label {
+  color: rgb(var(--color-dark-100)) !important;
+}
+
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-item.focused,
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled),
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-item.focused > .action-menu-item,
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-menu-item:focus {
+  background-color: rgb(var(--color-dark-750)) !important;
+  color: rgb(var(--color-dark-100)) !important;
+  outline: none !important;
+}
+
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-item.focused .action-label,
+html:not(.dark) .context-view .monaco-action-bar.vertical .action-item:hover:not(.disabled) .action-label {
+  color: rgb(var(--color-dark-100)) !important;
+}
+
+/* 停用項目 (Disabled) */
+.context-view .monaco-action-bar.vertical .action-item.disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+.context-view .monaco-action-bar.vertical .action-item.disabled:hover,
+.context-view .monaco-action-bar.vertical .action-item.disabled > .action-menu-item:hover {
+  background-color: transparent !important;
+}
+
+/* 快捷鍵膠囊 (Keybinding) */
+.context-view .monaco-action-bar.vertical .keybinding,
+.monaco-menu-container .monaco-action-bar.vertical .keybinding {
+  font-size: 0.6875rem !important; /* 11px */
+  opacity: 0.75 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  margin-left: 1.5rem !important;
+  padding: 0.1rem 0.4rem !important;
+  border-radius: 0.2rem !important;
+  line-height: 1 !important;
+}
+
+html.dark .context-view .monaco-action-bar.vertical .keybinding,
+.dark .context-view .monaco-action-bar.vertical .keybinding {
+  color: rgb(var(--color-dark-300)) !important;
+  background-color: rgba(var(--color-dark-900), 0.5) !important;
+  border: 1px solid rgba(var(--color-dark-700), 0.5) !important;
+}
+
+html:not(.dark) .context-view .monaco-action-bar.vertical .keybinding {
+  color: rgb(var(--color-dark-400)) !important;
+  background-color: rgba(var(--color-dark-700), 0.15) !important;
+  border: 1px solid rgba(var(--color-dark-700), 0.25) !important;
+}
+
+html.dark .context-view .monaco-action-bar.vertical .action-item.focused .keybinding,
+html.dark .context-view .monaco-action-bar.vertical .action-item:hover .keybinding,
+.dark .context-view .monaco-action-bar.vertical .action-item.focused .keybinding,
+.dark .context-view .monaco-action-bar.vertical .action-item:hover .keybinding {
+  color: rgb(var(--color-dark-200)) !important;
+  opacity: 1 !important;
+}
+
+/* 分隔線 (Separator) */
+.context-view .monaco-action-bar.vertical .action-item.separator,
+.context-view .monaco-action-bar.vertical .action-label.separator {
+  border-bottom: 1px solid rgb(var(--color-dark-700)) !important;
+  margin: 0.25rem 0.25rem !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  opacity: 0.8 !important;
+  box-sizing: border-box !important;
+}
+
+/* ==========================================================================
+   Dialog Surface Unification
+
+   Every dialog in the app — the ones built on SqDialog, the hand-rolled TSV wizard and the
+   floating tool windows — shares one frame: the same 1px border, 6px radius, surface and
+   `--shadow-overlay`. Individual dialogs still pick their own background, because several are
+   deliberately layered (a header strip over a body), but nothing paints a border of its own.
+
+   The semantic accents (.sq-dialog-accent-danger / -warn) are part of the same system, so the one
+   dialog that has to shout about an irreversible write still fits the shared frame.
+   ========================================================================== */
+.sq-dialog-surface {
+  border-radius: 6px !important;
+  border: 1px solid rgb(var(--color-dark-700)) !important;
+  box-shadow: var(--shadow-overlay) !important;
+  overflow: hidden !important;
+}
+
+.sq-dialog-surface.sq-dialog-accent-danger {
+  border-color: rgb(var(--color-danger)) !important;
+  box-shadow: 0 24px 48px -12px rgb(159 18 57 / 0.4), 0 6px 16px -8px rgb(0 0 0 / 0.4) !important;
+}
+
+.sq-dialog-surface.sq-dialog-accent-warn {
+  border-color: rgb(var(--color-warn)) !important;
+  box-shadow: 0 24px 48px -12px rgb(146 64 14 / 0.35), 0 6px 16px -8px rgb(0 0 0 / 0.4) !important;
+}
+
+/* One scrim for every modal in the app: pure colour, no blur (SPEC §7). Anything translucent
+   enough to need a blur would also be too thin to isolate the dialog from the data behind it. */
+.sq-scrim {
+  background-color: rgba(16, 24, 40, 0.32);
+}
+
+/* A maximized floating window spans the viewport, so its corners have to square off. This needs to
+   outrank the surface rule above, which is why it is a class and not an inline style. */
+.sq-dialog-surface.sq-dialog-square {
+  border-radius: 0 !important;
+}
+
+/* The header is the drag surface, so it carries the move cursor. */
+.sq-dialog-drag-handle {
+  cursor: move;
+}
+
+/*
+ * Drag / resize grab zones, injected into the dialog root by useDialogWindow. They sit inside the
+ * border so `overflow: hidden` cannot clip them; the cursor carries the affordance.
+ */
+.sq-dialog-resize-handle {
+  position: absolute;
+  z-index: 30;
+  touch-action: none;
+}
+
+.sq-dialog-resize-tl,
+.sq-dialog-resize-tr,
+.sq-dialog-resize-bl,
+.sq-dialog-resize-br {
+  width: 14px;
+  height: 14px;
+}
+
+.sq-dialog-resize-tl {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.sq-dialog-resize-tr {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.sq-dialog-resize-bl {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.sq-dialog-resize-br {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.sq-dialog-resize-t,
+.sq-dialog-resize-b {
+  left: 14px;
+  right: 14px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.sq-dialog-resize-t {
+  top: 0;
+}
+.sq-dialog-resize-b {
+  bottom: 0;
+}
+
+.sq-dialog-resize-l,
+.sq-dialog-resize-r {
+  top: 14px;
+  bottom: 14px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.sq-dialog-resize-l {
+  left: 0;
+}
+.sq-dialog-resize-r {
+  right: 0;
+}
+
+/* Radius belongs to the frame, so the header and footer inherit it and stay flush with the
+   corners even if a caller ever drops the shared `overflow: hidden`. */
+.sq-dialog-surface .sq-dialog-header {
+  border-top-left-radius: inherit !important;
+  border-top-right-radius: inherit !important;
+}
+
+.sq-dialog-surface .sq-dialog-footer {
+  border-bottom-left-radius: inherit !important;
+  border-bottom-right-radius: inherit !important;
+}
+
+/* ==========================================================================
+   The one tooltip (v-tooltip directive), SPEC §7
+
+   A single element shared by every anchor: #1F2328 on #F2F4F7, 11px, 4px radius, no arrow (the
+   pointer already says which control this belongs to) and no pointer events of its own.
+   ========================================================================== */
+.sq-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 11000;
+  max-width: 22rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #1f2328;
+  color: #f2f4f7;
+  font-family: var(--app-font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1rem;
+  letter-spacing: 0.01em;
+  white-space: pre-line;
+  word-break: break-word;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+html.dark .sq-tooltip {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* External specialized tooltips (HTML Query Plan) */
+.qp-tooltip {
+  font-size: 0.6875rem !important; /* 11px */
+  padding: 0.375rem 0.625rem !important;
+  border-radius: 0.25rem !important;
+  line-height: 1rem !important;
+}
+
+/* ==========================================================================
+   AI SQL Chat Markdown HTML Body Styling (.ai-markdown-body)
+   ========================================================================== */
+.ai-markdown-body {
+  color: inherit;
+  line-height: 1.625;
+}
+
+/* Headings */
+.ai-markdown-body h1,
+.ai-markdown-body h2,
+.ai-markdown-body h3,
+.ai-markdown-body h4 {
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+  color: rgb(var(--color-dark-100));
+}
+.ai-markdown-body h1 { font-size: 1.125rem; }
+.ai-markdown-body h2 { font-size: 1rem; color: #a78bfa; }
+.ai-markdown-body h3 { font-size: 0.875rem; color: #c4b5fd; }
+.ai-markdown-body h4 { font-size: 0.8125rem; }
+
+/* Paragraphs */
+.ai-markdown-body p {
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
+}
+
+/* Lists */
+.ai-markdown-body ul,
+.ai-markdown-body ol {
+  margin-top: 0.375rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.375rem;
+}
+.ai-markdown-body ul {
+  list-style-type: disc;
+}
+.ai-markdown-body ol {
+  list-style-type: decimal;
+}
+.ai-markdown-body li {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+
+/* Inline Code */
+.ai-markdown-body code:not(pre code) {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+/* Blockquotes */
+.ai-markdown-body blockquote {
+  border-left: 3px solid #8b5cf6;
+  background-color: rgba(139, 92, 246, 0.08);
+  padding: 0.375rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 0 0.25rem 0.25rem 0;
+  font-style: italic;
+  color: rgb(var(--color-dark-300));
+}
+
+/* Links */
+.ai-markdown-body a {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+.ai-markdown-body a:hover {
+  color: #93c5fd;
+}
+
+/* Horizontal Divider */
+.ai-markdown-body hr {
+  border: 0;
+  border-top: 1px solid rgb(var(--color-dark-700));
+  margin: 0.75rem 0;
+}
+
+/* ==========================================================================
+   AI SQL Chat GFM Tables (.ai-table-wrapper & .ai-markdown-table)
+   ========================================================================== */
+.ai-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 0.625rem 0;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--color-dark-700));
+  background-color: rgb(var(--color-dark-900));
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.ai-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.ai-markdown-table thead {
+  background-color: rgb(var(--color-dark-800));
+  border-bottom: 1px solid rgb(var(--color-dark-700));
+}
+
+.ai-markdown-table th {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: rgb(var(--color-dark-100));
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.ai-markdown-table td {
+  padding: 0.375rem 0.75rem;
+  border-top: 1px solid rgb(var(--color-dark-750));
+  color: rgb(var(--color-dark-200));
+  line-height: 1.45;
+}
+
+.ai-markdown-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+html:not(.dark) .ai-markdown-table tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* ==========================================================================
+   AI SQL Chat Markdown - Light Mode Overrides (html:not(.dark))
+   ========================================================================== */
+html:not(.dark) .ai-markdown-body {
+  color: #1e293b;
+}
+
+/* 標題類改為黑色粗體 */
+html:not(.dark) .ai-markdown-body h1,
+html:not(.dark) .ai-markdown-body h2,
+html:not(.dark) .ai-markdown-body h3,
+html:not(.dark) .ai-markdown-body h4,
+html:not(.dark) .ai-markdown-body h5,
+html:not(.dark) .ai-markdown-body h6 {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* 反引號行內程式碼 (Inline Code) 改為淺灰色底色 */
+html:not(.dark) .ai-markdown-body code:not(pre code) {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+}
+
+/* 引用區塊與外鏈在淺色系下對比度優化 */
+html:not(.dark) .ai-markdown-body blockquote {
+  background-color: rgba(139, 92, 246, 0.06);
+  color: #334155;
+  border-left-color: #7c3aed;
+}
+
+html:not(.dark) .ai-markdown-body a {
+  color: #2563eb;
+}
+html:not(.dark) .ai-markdown-body a:hover {
+  color: #1d4ed8;
+}
+
+/* GFM 表格表頭在淺色系時同步加強黑色粗體 */
+html:not(.dark) .ai-markdown-table th {
+  color: #000000;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   SQL Editor Custom Backdrop (.sqlight-editor-*)
+   ========================================================================== */
+
+/*
+ * Monaco paints an opaque background from the active theme colour. When the user enables a backdrop
+ * image the shell adds `.sqlight-editor-transparent` so every surface that would cover the picture
+ * is cleared and only the text layer keeps painting.
+ */
+.sqlight-editor-transparent .monaco-editor,
+.sqlight-editor-transparent .monaco-editor .monaco-editor-background,
+.sqlight-editor-transparent .monaco-editor .margin {
+  background-color: transparent !important;
+}
+
+/*
+ * The backdrop owns its own layer above the editor surface colour and below Monaco's scrollable
+ * content, so it stays pinned to the bottom-right corner of the viewport while the SQL scrolls.
+ * The layer must span the whole viewport: an absolutely positioned box without a size would
+ * collapse to 0x0 and never paint the picture.
+ */
+.sqlight-editor-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: auto 60%;
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ==========================================================================
+   Motion & Accessibility
+
+   The app follows Apple's "Designing Fluid Interfaces" model: anything a pointer can drag is
+   driven from `utils/spring.ts` so it starts at the value already on screen, inherits the
+   gesture's velocity and can be grabbed mid-flight. That means the rules below are mostly about
+   *removing* prescribed motion — the loops, the fixed-duration slides and the pieces that keep
+   moving when the user asked them not to.
+   ========================================================================== */
+
+/*
+ * Indeterminate progress hairline. A query in flight has to be visible from the results area,
+ * not only from the toolbar button and the status bar — feedback must be continuous *during*
+ * the wait, not just at the end of it. 2px, opacity-only, no layout impact.
+ */
+.sq-progress-line {
+  position: relative;
+  height: 2px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background-color: rgb(var(--color-dark-750));
+}
+
+.sq-progress-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 35%;
+  border-radius: 9999px;
+  background-color: rgb(var(--color-accent));
+  animation: sqProgressSlide 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes sqProgressSlide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(286%);
+  }
+}
+
+/*
+ * Press feedback belongs on pointer-down, not on release, and it must not be animated: waiting
+ * for the click to show anything is what makes a control feel dead. `transform` only, so no
+ * layout is touched.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .sq-btn:not(:disabled):active {
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * Reduced motion is a gentler equivalent, not the absence of feedback. Looping and travelling
+   * motion is dropped; colour, opacity and status changes are kept because they carry meaning.
+   */
+  .animate-pulse,
+  .animate-ping,
+  .animate-bounce,
+  .animate-fadein,
+  .animate-fade-in,
+  .sq-menu-in {
+    animation: none !important;
+  }
+
+  /* A spinner reports "still working", so it keeps turning — just calmly. */
+  .animate-spin {
+    animation-duration: 2s !important;
+  }
+
+  /* The progress hairline stops sliding but keeps reporting: a static accent segment instead
+     of a travelling one. */
+  .sq-progress-line::after {
+    animation: none !important;
+  }
+
+  /*
+   * Overlays cross-fade instead of scaling and sliding, so a dialog still announces itself
+   * without any travel across the screen.
+   */
+  .sq-dialog-enter-active,
+  .sq-dialog-leave-active,
+  .sq-toast-item-enter-active,
+  .sq-toast-item-leave-active {
+    transition-property: opacity !important;
+    transition-duration: 120ms !important;
+    transform: none !important;
+  }
+
+  /* Programmatic scrolls (e.g. locating a table in Explorer) jump instead of gliding. */
+  html {
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  /*
+   * Frostier, not thinner. Every blurred surface in this app already paints a >= 90% opaque
+   * token background or is a scrim, so dropping the blur keeps the contrast without leaving
+   * anything see-through.
+   */
+  [class*='backdrop-blur'] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-accent)) !important;
+    outline-offset: 1px;
+  }
+
+  /* Hairline dividers become real structure when the user asks for more contrast. */
+  .border-dark-700,
+  .border-dark-750 {
+    border-color: rgb(var(--color-dark-500)) !important;
+  }
+}
