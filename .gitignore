@@ -1,5 +1,6 @@
 # Wails and frontend build output
 build/bin/
+*-res.syso
 dist-portable/
 frontend/dist/
 frontend/.test-build/
