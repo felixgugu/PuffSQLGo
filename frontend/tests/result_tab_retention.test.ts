@@ -209,6 +209,11 @@ test('the retention toggle sits in the result toolbar and in the settings modal'
   );
   assert.match(panel, /results\.keepResultTabs/, 'on-state label key');
   assert.match(panel, /results\.singleResultTab/, 'off-state label key');
+  assert.match(
+    panel,
+    /:title="settingsStore\.accumulateResultTabs \? \$t\('results\.keepResultTabsTooltip'\) : \$t\('results\.singleResultTabTooltip'\)"/,
+    'the result-tab retention icon must expose its current mode as a tooltip'
+  );
 
   const modal = readSource('src/components/modals/SettingsModal.vue');
   assert.match(

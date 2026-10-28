@@ -19,7 +19,40 @@
       class="flex-1 w-full"
     />
 
-    <!-- Multiple Result Sets (> 1): Always Stacked SSMS Multi-Grid View -->
+    <!-- Multiple Result Sets: one grid at a time, selected from an inner tab strip -->
+    <div
+      v-else-if="resultViewMode === 'tabs'"
+      class="flex-1 w-full min-h-0 flex flex-col overflow-hidden"
+    >
+      <ResultSetTabs
+        :sets="effectiveResultSets"
+        :active-index="activeResultSetIndex"
+        :result-tab-id="tabId"
+        :panel-id="resultSetPanelId(activeResultSetIndex)"
+        @select="selectResultSet"
+      />
+
+      <div
+        v-if="effectiveResultSets[activeResultSetIndex]"
+        :id="resultSetPanelId(activeResultSetIndex)"
+        role="tabpanel"
+        :aria-labelledby="resultSetTabId(activeResultSetIndex)"
+        class="flex-1 min-h-0 overflow-hidden"
+      >
+        <ResultGridItem
+          :key="itemKey(activeResultSetIndex)"
+          :tab-id="tabId"
+          :result-set="effectiveResultSets[activeResultSetIndex]!"
+          :set-index="activeResultSetIndex"
+          :total-sets="1"
+          :is-maximized="false"
+          :hide-toolbar="toolbarHidden"
+          :duration-ms="durationMs"
+        />
+      </div>
+    </div>
+
+    <!-- Multiple Result Sets (> 1): Vertical SSMS multi-grid view -->
     <div
       v-else
       class="flex-1 w-full flex flex-col overflow-hidden min-h-0"
@@ -80,6 +113,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import ResizableSplitter from '@/components/common/ResizableSplitter.vue';
 import ResultGridItem from '@/components/results/ResultGridItem.vue';
+import ResultSetTabs from '@/components/results/ResultSetTabs.vue';
 import ResultsEmptyState from '@/components/results/ResultsEmptyState.vue';
 import { useGridLayoutStore, defaultToolbarHiddenForCount } from '@/stores/gridLayoutStore';
 import { rubberbandClamp, SPRING_PRESETS } from '@/utils/spring';
@@ -107,8 +141,13 @@ const effectiveResultSets = computed<ResultSet[]>(() => {
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const maximizedIndex = ref<number | null>(null);
+const activeResultSetIndex = ref(0);
 
 const gridLayoutStore = useGridLayoutStore();
+
+const resultViewMode = computed(() =>
+  gridLayoutStore.getResultViewMode(props.tabId ?? null)
+);
 
 /**
  * Per result tab view mode: hides the toolbar and info bar of every grid in this tab. The state
@@ -141,8 +180,44 @@ function toggleMaximize(index: number) {
     maximizedIndex.value = null;
   } else {
     maximizedIndex.value = index;
+    selectResultSet(index);
   }
 }
+
+function selectResultSet(index: number) {
+  if (!Number.isInteger(index) || index < 0 || index >= effectiveResultSets.value.length) return;
+  activeResultSetIndex.value = index;
+  gridLayoutStore.setActiveSetIndex(props.tabId ?? null, index);
+}
+
+function resultSetTabId(index: number): string {
+  return `result-set-tab-${props.tabId ?? 'orphan'}-${index}`;
+}
+
+function resultSetPanelId(index: number): string {
+  return `result-set-panel-${props.tabId ?? 'orphan'}-${index}`;
+}
+
+watch(
+  () => [props.tabId, effectiveResultSets.value.length] as const,
+  () => {
+    const remembered = gridLayoutStore.getActiveSetIndex(props.tabId ?? null);
+    const nextIndex =
+      remembered !== null && remembered >= 0 && remembered < effectiveResultSets.value.length
+        ? remembered
+        : 0;
+    selectResultSet(nextIndex);
+  },
+  { immediate: true }
+);
+
+watch(resultViewMode, (mode) => {
+  if (mode !== 'tabs') return;
+  if (maximizedIndex.value !== null) {
+    selectResultSet(maximizedIndex.value);
+  }
+  maximizedIndex.value = null;
+});
 
 function getAvailableHeight(): number {
   if (!containerRef.value) return 0;
@@ -163,6 +238,11 @@ function resetEqualHeights() {
     heights.push(equalH + (i === count - 1 ? remainder : 0));
   }
   paneHeights.value = heights;
+}
+
+function persistPaneHeights(tabId: string | null | undefined) {
+  if (!tabId || paneHeights.value.length === 0) return;
+  gridLayoutStore.setStackedPaneHeights(tabId, paneHeights.value);
 }
 
 function recalculateHeights() {
@@ -193,16 +273,48 @@ function recalculateHeights() {
   });
 }
 
-// Watch for effectiveResultSets changes to re-init heights
+function restoreStackedHeights() {
+  const count = effectiveResultSets.value.length;
+  if (count <= 1 || !containerRef.value) {
+    paneHeights.value = [];
+    if (count <= 1) {
+      gridLayoutStore.setStackedPaneHeights(props.tabId ?? null, []);
+    }
+    return;
+  }
+
+  const saved = gridLayoutStore.getStackedPaneHeights(props.tabId ?? null);
+  if (!saved || saved.length !== count) {
+    resetEqualHeights();
+    return;
+  }
+
+  paneHeights.value = saved;
+  recalculateHeights();
+}
+
+// Keep every height mutation (drag, resize, spring, equal reset) attached to its result tab.
 watch(
-  () => effectiveResultSets.value,
+  paneHeights,
+  () => persistPaneHeights(props.tabId ?? null),
+  { deep: true, flush: 'sync' }
+);
+
+// Save the outgoing tab before the incoming result sets replace the local pane state.
+watch(
+  () => props.tabId,
+  (_nextTabId, previousTabId) => persistPaneHeights(previousTabId),
+  { flush: 'sync' }
+);
+
+// Restore the layout for a newly selected result tab. A same-tab refresh keeps its heights unless
+// the result-set count changed, in which case an equal split is the only safe layout.
+watch(
+  () => [props.tabId, effectiveResultSets.value] as const,
   () => {
     maximizedIndex.value = null;
-    nextTick(() => {
-      resetEqualHeights();
-    });
-  },
-  { deep: false }
+    restoreStackedHeights();
+  }
 );
 
 // Splitter Dragging Logic
@@ -383,11 +495,12 @@ onMounted(() => {
     resizeObserver.observe(containerRef.value);
   }
   nextTick(() => {
-    resetEqualHeights();
+    restoreStackedHeights();
   });
 });
 
 onBeforeUnmount(() => {
+  persistPaneHeights(props.tabId ?? null);
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;

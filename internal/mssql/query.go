@@ -219,6 +219,11 @@ func normalizeValue(value any, dataType string) any {
 		return typed.Format("2006-01-02 15:04:05.999999999")
 	case []byte:
 		switch strings.ToUpper(dataType) {
+		case "UNIQUEIDENTIFIER":
+			if guid, ok := formatUniqueIdentifier(typed); ok {
+				return guid
+			}
+			return model.BinaryCell{Type: "binary", Length: len(typed)}
 		case "BINARY", "VARBINARY", "IMAGE", "TIMESTAMP", "ROWVERSION":
 			return model.BinaryCell{Type: "binary", Length: len(typed)}
 		default:
@@ -242,6 +247,27 @@ func normalizeValue(value any, dataType string) any {
 	default:
 		return typed
 	}
+}
+
+// SQL Server sends uniqueidentifier values in its mixed-endian storage order. Convert the first
+// three groups before formatting so the grid shows the same GUID as SQL Server Management Studio.
+func formatUniqueIdentifier(value []byte) (string, bool) {
+	if len(value) != 16 {
+		return "", false
+	}
+
+	var guid [16]byte
+	copy(guid[:], value)
+	for _, bounds := range [][2]int{{0, 4}, {4, 6}, {6, 8}} {
+		for left, right := bounds[0], bounds[1]-1; left < right; left, right = left+1, right-1 {
+			guid[left], guid[right] = guid[right], guid[left]
+		}
+	}
+
+	return fmt.Sprintf(
+		"%X-%X-%X-%X-%X",
+		guid[0:4], guid[4:6], guid[6:8], guid[8:10], guid[10:],
+	), true
 }
 
 func errorMessage(err error, startLine *int) model.QueryMessage {

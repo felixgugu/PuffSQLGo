@@ -139,6 +139,38 @@ test('active set index is remembered per tab and cleared with its layouts', () =
   assert.equal(store.has('tab-y:0'), true);
 });
 
+test('stacked pane heights are remembered per tab and cleared with the tab', () => {
+  const store = freshStore();
+  assert.equal(store.getStackedPaneHeights('tab-heights'), null);
+  assert.equal(store.getStackedPaneHeights(null), null);
+
+  store.setStackedPaneHeights('tab-heights', [120, 280, 90]);
+  const heights = store.getStackedPaneHeights('tab-heights');
+  assert.deepEqual(heights, [120, 280, 90]);
+
+  heights![0] = 999;
+  assert.deepEqual(
+    store.getStackedPaneHeights('tab-heights'),
+    [120, 280, 90],
+    'callers must not mutate the stored height array'
+  );
+
+  store.setStackedPaneHeights('tab-heights', [0, 100]);
+  store.setStackedPaneHeights('tab-heights', [Number.NaN, 100]);
+  assert.deepEqual(
+    store.getStackedPaneHeights('tab-heights'),
+    [120, 280, 90],
+    'invalid heights must not overwrite a valid layout'
+  );
+
+  store.setStackedPaneHeights('tab-heights', []);
+  assert.equal(store.getStackedPaneHeights('tab-heights'), null);
+  store.setStackedPaneHeights('tab-heights', [120, 280, 90]);
+
+  store.clearTab('tab-heights');
+  assert.equal(store.getStackedPaneHeights('tab-heights'), null);
+});
+
 test('hidden toolbars are remembered per result tab and cleared with the tab', () => {
   const store = freshStore();
   assert.equal(store.isToolbarHidden('tab-t'), false);
@@ -160,6 +192,21 @@ test('hidden toolbars are remembered per result tab and cleared with the tab', (
 
   store.clearTab('tab-t');
   assert.equal(store.isToolbarHidden('tab-t'), false);
+});
+
+test('result view mode is remembered per result tab and cleared with the tab', () => {
+  const store = freshStore();
+  assert.equal(store.getResultViewMode('tab-v'), 'stacked');
+  assert.equal(store.getResultViewMode(null), 'stacked');
+
+  store.setResultViewMode('tab-v', 'tabs');
+  assert.equal(store.getResultViewMode('tab-v'), 'tabs');
+  assert.equal(store.getResultViewMode('tab-other'), 'stacked');
+  store.setResultViewMode(null, 'tabs');
+  assert.equal(store.getResultViewMode('orphan'), 'stacked');
+
+  store.clearTab('tab-v');
+  assert.equal(store.getResultViewMode('tab-v'), 'stacked');
 });
 
 test('multiple result sets default to hiding toolbars until explicitly toggled', () => {
@@ -220,6 +267,11 @@ test('the hide-toolbar toggle sits in AppBottomPanel and reaches every grid pane
   );
   // The toggle is labelled with a wrench glyph from the app's icon set, not an icon-font class.
   assert.match(panel, /<Wrench class="w-3\.5 h-3\.5" \/>/, 'the toolbar toggle must use a tool icon');
+  assert.match(
+    panel,
+    /:title="isToolbarHidden \? \$t\('results\.showToolbarsTooltip'\) : \$t\('results\.hideToolbarsTooltip'\)"/,
+    'the toolbar icon must expose its current action as a tooltip'
+  );
   assert.doesNotMatch(panel, /pi pi-eye/, 'the old eye icon must be gone');
   // The toggle must be reachable in every results-view state, including the empty placeholder grid.
   assert.match(
@@ -231,8 +283,8 @@ test('the hide-toolbar toggle sits in AppBottomPanel and reaches every grid pane
   const grid = readSource('src/components/results/ResultGrid.vue');
   assert.equal(
     (grid.match(/:hide-toolbar="toolbarHidden"/g) ?? []).length,
-    3,
-    'single, maximized, and stacked panes must all receive the flag'
+    4,
+    'single, tabbed, maximized, and stacked panes must all receive the flag'
   );
   assert.match(
     grid,
@@ -246,6 +298,31 @@ test('the hide-toolbar toggle sits in AppBottomPanel and reaches every grid pane
     (item.match(/v-if="!hideToolbar"/g) ?? []).length,
     2,
     'both the toolbar and the info bar must be hidden'
+  );
+});
+
+test('ResultGrid saves and restores each result tab stacked pane heights', () => {
+  const grid = readSource('src/components/results/ResultGrid.vue');
+
+  assert.match(
+    grid,
+    /gridLayoutStore\.getStackedPaneHeights\(props\.tabId \?\? null\)/,
+    'switching result tabs must restore that tab saved heights'
+  );
+  assert.match(
+    grid,
+    /gridLayoutStore\.setStackedPaneHeights\(tabId, paneHeights\.value\)/,
+    'height changes must be saved per result tab'
+  );
+  assert.match(
+    grid,
+    /persistPaneHeights\(previousTabId\)/,
+    'the outgoing tab heights must be saved before its grids are replaced'
+  );
+  assert.match(
+    grid,
+    /saved\.length !== count[\s\S]{0,80}?resetEqualHeights\(\)/,
+    'a different grid count must safely fall back to equal heights'
   );
 });
 

@@ -114,31 +114,64 @@
       <div class="flex items-center space-x-1 pl-2 flex-shrink-0 text-xs">
         <!-- Grid Actions (whenever the results view has a grid pane to act on) -->
         <template v-if="workspaceStore.bottomPanelTab === 'results' && queryStore.activeResultTabId !== null">
-          <!-- Toolbar visibility for every grid pane in this result tab -->
-          <SqButton
-            type="button"
-            size="sm"
-            :tone="isToolbarHidden ? 'accent' : 'neutral'"
-            :active="isToolbarHidden"
-            @click="toggleToolbarVisibility"
-            :aria-label="isToolbarHidden ? $t('results.showToolbars') : $t('results.hideToolbars')"
-            :v-tooltip.bottom="isToolbarHidden ? $t('results.showToolbarsTooltip') : $t('results.hideToolbarsTooltip')"
+          <!-- Result grid actions in one capsule: layout, toolbars and result-tab retention -->
+          <SqButtonGroup
+            class="sq-view-switch result-actions-capsule"
+            :aria-label="$t('results.resultActions')"
           >
-            <template #icon><Wrench class="w-3.5 h-3.5" /></template>
-          </SqButton>
+            <SqButton
+              v-if="activeResultSetsCount > 1"
+              type="button"
+              size="sm"
+              variant="ghost"
+              :tone="resultViewMode === 'stacked' ? 'accent' : 'neutral'"
+              :active="resultViewMode === 'stacked'"
+              :aria-label="$t('results.stackedView')"
+              :title="$t('results.switchToStackedTooltip')"
+              @click="setResultViewMode('stacked')"
+            >
+              <template #icon><Layers class="w-3.5 h-3.5" /></template>
+            </SqButton>
+            <SqButton
+              v-if="activeResultSetsCount > 1"
+              type="button"
+              size="sm"
+              variant="ghost"
+              :tone="resultViewMode === 'tabs' ? 'accent' : 'neutral'"
+              :active="resultViewMode === 'tabs'"
+              :aria-label="$t('results.tabbedView')"
+              :title="$t('results.switchToTabsTooltip')"
+              @click="setResultViewMode('tabs')"
+            >
+              <template #icon><LayoutGrid class="w-3.5 h-3.5" /></template>
+            </SqButton>
 
-          <!-- Result tab retention: accumulate tabs vs. keep only pinned + the newest -->
-          <SqButton
-            type="button"
-            size="sm"
-            :tone="settingsStore.accumulateResultTabs ? 'accent' : 'neutral'"
-            :active="settingsStore.accumulateResultTabs"
-            @click="toggleResultTabRetention"
-            :aria-label="settingsStore.accumulateResultTabs ? $t('results.singleResultTab') : $t('results.keepResultTabs')"
-            :v-tooltip.bottom="settingsStore.accumulateResultTabs ? $t('results.keepResultTabsTooltip') : $t('results.singleResultTabTooltip')"
-          >
-            <template #icon><CopyPlus class="w-3.5 h-3.5" /></template>
-          </SqButton>
+            <!-- Toolbar visibility for every grid pane in this result tab -->
+            <SqButton
+              type="button"
+              size="sm"
+              :tone="isToolbarHidden ? 'accent' : 'neutral'"
+              :active="isToolbarHidden"
+              @click="toggleToolbarVisibility"
+              :aria-label="isToolbarHidden ? $t('results.showToolbars') : $t('results.hideToolbars')"
+              :title="isToolbarHidden ? $t('results.showToolbarsTooltip') : $t('results.hideToolbarsTooltip')"
+            >
+              <template #icon><Wrench class="w-3.5 h-3.5" /></template>
+            </SqButton>
+
+            <!-- Result tab retention: accumulate tabs vs. keep only pinned + the newest -->
+            <SqButton
+              type="button"
+              size="sm"
+              :tone="settingsStore.accumulateResultTabs ? 'accent' : 'neutral'"
+              :active="settingsStore.accumulateResultTabs"
+              @click="toggleResultTabRetention"
+              :aria-label="settingsStore.accumulateResultTabs ? $t('results.singleResultTab') : $t('results.keepResultTabs')"
+              :title="settingsStore.accumulateResultTabs ? $t('results.keepResultTabsTooltip') : $t('results.singleResultTabTooltip')"
+            >
+              <template #icon><CopyPlus class="w-3.5 h-3.5" /></template>
+            </SqButton>
+          </SqButtonGroup>
 
           <div class="h-3.5 w-px bg-dark-750 mx-1 flex-shrink-0"></div>
         </template>
@@ -242,14 +275,30 @@
 import { ref, computed, reactive, nextTick, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import SqButton from '@/components/ui/SqButton.vue';
+import SqButtonGroup from '@/components/ui/SqButtonGroup.vue';
 import SqMenu from '@/components/ui/SqMenu.vue';
 import { useContextMenu } from '@/composables/useContextMenu';
-import { Bookmark, BookmarkCheck, CopyPlus, Minus, Pencil, Pin, Wrench, X } from '@/components/icons';
+import {
+  Bookmark,
+  BookmarkCheck,
+  CopyPlus,
+  LayoutGrid,
+  Layers,
+  Minus,
+  Pencil,
+  Pin,
+  Wrench,
+  X,
+} from '@/components/icons';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useQueryStore } from '@/stores/queryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { useGridLayoutStore, defaultToolbarHiddenForCount } from '@/stores/gridLayoutStore';
+import {
+  useGridLayoutStore,
+  defaultToolbarHiddenForCount,
+  type ResultGridViewMode,
+} from '@/stores/gridLayoutStore';
 import ResultGrid from '@/components/results/ResultGrid.vue';
 import ResultMessages from '@/components/results/ResultMessages.vue';
 import QueryHistory from '@/components/results/QueryHistory.vue';
@@ -282,8 +331,16 @@ const isToolbarHidden = computed(() => {
   return gridLayoutStore.isToolbarHidden(queryStore.activeResultTabId, toolbarDefaultHidden.value);
 });
 
+const resultViewMode = computed(() =>
+  gridLayoutStore.getResultViewMode(queryStore.activeResultTabId)
+);
+
 function toggleToolbarVisibility() {
   gridLayoutStore.toggleToolbarHidden(queryStore.activeResultTabId, toolbarDefaultHidden.value);
+}
+
+function setResultViewMode(mode: ResultGridViewMode) {
+  gridLayoutStore.setResultViewMode(queryStore.activeResultTabId, mode);
 }
 
 /**
@@ -677,6 +734,34 @@ function getResultTabStyle(rtab: QueryResultTab): Record<string, string> {
 
 .result-tab-item + .result-tab-item {
   margin-left: -1px;
+}
+
+.result-actions-capsule {
+  gap: 2px;
+  padding: 2px;
+}
+
+.result-actions-capsule :deep(.sq-btn) {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 5px;
+}
+
+.result-actions-capsule :deep(.sq-btn + .sq-btn) {
+  border-left-color: transparent;
+}
+
+.result-actions-capsule :deep(.sq-btn:hover:not(:disabled)) {
+  background-color: rgb(var(--color-dark-800) / 0.7);
+  color: rgb(var(--color-dark-200));
+}
+
+.result-actions-capsule :deep(.sq-btn.is-active) {
+  background-color: rgb(var(--color-raised, 39 39 42));
+  color: rgb(var(--color-accent));
+  box-shadow: 0 1px 2px rgb(var(--color-dark-950) / 0.12), inset 0 0 0 1px rgb(var(--color-dark-700) / 0.7);
 }
 
 .result-tab-item.active-tab {

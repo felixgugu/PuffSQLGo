@@ -303,3 +303,74 @@ describe('middle-click closes a tab', () => {
   });
 });
 });
+
+describe('multi_result_view_mode', () => {
+test('the results panel switches multi-set grids between stacked and tabbed layouts', () => {
+  const panel = readSource('src/components/layout/AppBottomPanel.vue');
+  const grid = readSource('src/components/results/ResultGrid.vue');
+  const tabs = readSource('src/components/results/ResultSetTabs.vue');
+
+  assert.match(
+    panel,
+    /<SqButtonGroup[\s\S]{0,200}?class="sq-view-switch result-actions-capsule"[\s\S]{0,200}?:aria-label="\$t\('results\.resultActions'\)"/,
+    'the result actions must share the same segmented track as the panel view switch'
+  );
+  assert.match(panel, /setResultViewMode\('stacked'\)/);
+  assert.match(panel, /setResultViewMode\('tabs'\)/);
+  assert.match(panel, /results\.switchToStackedTooltip/);
+  assert.match(panel, /results\.switchToTabsTooltip/);
+  const layoutSwitch = panel.match(/<SqButtonGroup[\s\S]*?<\/SqButtonGroup>/)?.[0];
+  assert.ok(layoutSwitch, 'the multi-result layout switch must be easy to locate');
+  assert.doesNotMatch(layoutSwitch, /:label=/, 'the layout switch must be icon-only');
+  assert.match(layoutSwitch, /:aria-label="\$t\('results\.stackedView'\)"/);
+  assert.match(layoutSwitch, /:aria-label="\$t\('results\.tabbedView'\)"/);
+  assert.match(
+    layoutSwitch,
+    /:title="\$t\('results\.switchToStackedTooltip'\)"/,
+    'the stacked icon must retain its tooltip'
+  );
+  assert.match(
+    layoutSwitch,
+    /:title="\$t\('results\.switchToTabsTooltip'\)"/,
+    'the tabbed icon must retain its tooltip'
+  );
+  assert.match(layoutSwitch, /<Wrench class="w-3\.5 h-3\.5" \/>/);
+  assert.match(layoutSwitch, /<CopyPlus class="w-3\.5 h-3\.5" \/>/);
+  assert.match(
+    panel,
+    /\.result-actions-capsule :deep\(\.sq-btn\)\s*\{[\s\S]*?width:\s*24px;[\s\S]*?height:\s*20px;[\s\S]*?border-radius:\s*5px;/,
+    'the four icon buttons must match the panel switch segment dimensions'
+  );
+  assert.match(
+    panel,
+    /\.result-actions-capsule :deep\(\.sq-btn\.is-active\)\s*\{[\s\S]*?background-color:\s*rgb\(var\(--color-raised[\s\S]*?color:\s*rgb\(var\(--color-accent\)\)/,
+    'the active result action must match the raised active panel segment'
+  );
+
+  assert.match(
+    grid,
+    /v-else-if="resultViewMode === 'tabs'"[\s\S]{0,500}?<ResultSetTabs/,
+    'tabbed mode must render an inner result-set tab strip'
+  );
+  assert.match(
+    tabs,
+    /role="tab"/,
+    'tabbed mode must expose each result set as a tab'
+  );
+  assert.match(
+    tabs,
+    /@click="\$emit\('select', index\)"/,
+    'each inner result-set tab must select its grid'
+  );
+  assert.match(
+    tabs,
+    /@keydown="onKeydown"/,
+    'the inner result-set tabs must support keyboard navigation'
+  );
+  assert.match(
+    grid,
+    /gridLayoutStore\.setActiveSetIndex\(props\.tabId \?\? null, index\)/,
+    'the selected result set must persist per result tab'
+  );
+});
+});

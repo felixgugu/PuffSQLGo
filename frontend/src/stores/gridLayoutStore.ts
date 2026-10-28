@@ -28,6 +28,8 @@ export interface GridLayoutEntry {
   sorters: GridLayoutSortEntry[];
 }
 
+export type ResultGridViewMode = 'stacked' | 'tabs';
+
 /** Builds the stable layout key for one result set. Kept pure for unit testing. */
 export function buildLayoutKey(tabId: string | null | undefined, setIndex: number): string {
   return `${tabId ?? 'orphan'}:${setIndex}`;
@@ -49,9 +51,15 @@ export const useGridLayoutStore = defineStore('gridLayout', () => {
   // result width, so keeping them outside Vue's reactivity avoids proxy overhead on every capture.
   const layouts = new Map<string, GridLayoutEntry>();
   const activeSetIndexByTab = new Map<string, number>();
+  // Stacked grid heights are a session-only layout preference tied to one result tab. They are
+  // stored as pixels and proportionally rescaled whenever the results panel changes size.
+  const stackedPaneHeightsByTab = new Map<string, number[]>();
   // Toolbar visibility is the opposite case: the header button and every grid pane of the tab
   // render from it, so this one has to be reactive.
   const toolbarHiddenByTab = ref(new Map<string, boolean>());
+  // Multi-result-set layout is also a per-result-tab view preference. Stacked stays the default,
+  // while tabs keeps every result reachable without mounting all of their grids at once.
+  const resultViewModeByTab = ref(new Map<string, ResultGridViewMode>());
 
   function layoutKey(tabId: string | null | undefined, setIndex: number): string {
     return buildLayoutKey(tabId, setIndex);
@@ -115,6 +123,27 @@ export const useGridLayoutStore = defineStore('gridLayout', () => {
     activeSetIndexByTab.set(tabId, index);
   }
 
+  /** Returns a copy of the user-adjusted stacked pane heights for one result tab. */
+  function getStackedPaneHeights(tabId: string | null | undefined): number[] | null {
+    if (!tabId) return null;
+    const heights = stackedPaneHeightsByTab.get(tabId);
+    return heights ? [...heights] : null;
+  }
+
+  /** Stores finite positive stacked pane heights; an empty array clears the saved layout. */
+  function setStackedPaneHeights(
+    tabId: string | null | undefined,
+    heights: number[]
+  ): void {
+    if (!tabId) return;
+    if (heights.length === 0) {
+      stackedPaneHeightsByTab.delete(tabId);
+      return;
+    }
+    if (!heights.every((height) => Number.isFinite(height) && height > 0)) return;
+    stackedPaneHeightsByTab.set(tabId, [...heights]);
+  }
+
   /** Whether one result tab hides the toolbar and info bars of all its grids. */
   function isToolbarHidden(tabId: string | null | undefined, defaultHidden: boolean = false): boolean {
     if (!tabId) return defaultHidden;
@@ -139,14 +168,40 @@ export const useGridLayoutStore = defineStore('gridLayout', () => {
     return hidden;
   }
 
+  /** Whether one result tab lays out its result sets vertically or as an inner tab strip. */
+  function getResultViewMode(
+    tabId: string | null | undefined,
+    defaultMode: ResultGridViewMode = 'stacked'
+  ): ResultGridViewMode {
+    if (!tabId) return defaultMode;
+    return resultViewModeByTab.value.get(tabId) ?? defaultMode;
+  }
+
+  /** Sets the result-set layout of one result tab. Unknown tab ids are ignored. */
+  function setResultViewMode(
+    tabId: string | null | undefined,
+    mode: ResultGridViewMode
+  ): void {
+    if (!tabId) return;
+    const next = new Map(resultViewModeByTab.value);
+    next.set(tabId, mode);
+    resultViewModeByTab.value = next;
+  }
+
   /** Drops every cached layout / remembered index of a closed result tab. */
   function clearTab(tabId: string | null | undefined): void {
     if (!tabId) return;
     activeSetIndexByTab.delete(tabId);
+    stackedPaneHeightsByTab.delete(tabId);
     if (toolbarHiddenByTab.value.has(tabId)) {
       const next = new Map(toolbarHiddenByTab.value);
       next.delete(tabId);
       toolbarHiddenByTab.value = next;
+    }
+    if (resultViewModeByTab.value.has(tabId)) {
+      const next = new Map(resultViewModeByTab.value);
+      next.delete(tabId);
+      resultViewModeByTab.value = next;
     }
     const prefix = `${tabId}:`;
     for (const key of [...layouts.keys()]) {
@@ -161,9 +216,13 @@ export const useGridLayoutStore = defineStore('gridLayout', () => {
     has,
     getActiveSetIndex,
     setActiveSetIndex,
+    getStackedPaneHeights,
+    setStackedPaneHeights,
     isToolbarHidden,
     setToolbarHidden,
     toggleToolbarHidden,
+    getResultViewMode,
+    setResultViewMode,
     clearTab,
   };
 });

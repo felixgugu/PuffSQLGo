@@ -99,3 +99,22 @@ func TestNormalizeValueKeepsBinaryCompactAndPreservesNull(t *testing.T) {
 		t.Fatalf("NULL became %#v", value)
 	}
 }
+
+func TestNormalizeValueFormatsUniqueIdentifier(t *testing.T) {
+	// SQL Server wire order for FF19966F-868B-11D0-B42D-00C04FC964FF.
+	raw := []byte{
+		0x6F, 0x96, 0x19, 0xFF,
+		0x8B, 0x86,
+		0xD0, 0x11,
+		0xB4, 0x2D,
+		0x00, 0xC0, 0x4F, 0xC9, 0x64, 0xFF,
+	}
+
+	value := normalizeValue(raw, "uniqueidentifier")
+	if value != "FF19966F-868B-11D0-B42D-00C04FC964FF" {
+		t.Fatalf("uniqueidentifier = %#v", value)
+	}
+	if raw[0] != 0x6F {
+		t.Fatal("normalization mutated the scanned value")
+	}
+}
