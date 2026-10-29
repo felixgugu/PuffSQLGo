@@ -216,7 +216,7 @@ func normalizeValue(value any, dataType string) any {
 	}
 	switch typed := value.(type) {
 	case time.Time:
-		return typed.Format("2006-01-02 15:04:05.999999999")
+		return formatTimeValue(typed, dataType)
 	case []byte:
 		switch strings.ToUpper(dataType) {
 		case "UNIQUEIDENTIFIER":
@@ -247,6 +247,17 @@ func normalizeValue(value any, dataType string) any {
 	default:
 		return typed
 	}
+}
+
+// formatTimeValue renders a scanned SQL Server date/time value as text for the grid.
+// datetimeoffset keeps its UTC offset (for example "2024-05-06 07:08:09 +08:00"); datetime,
+// datetime2, smalldatetime, date and time carry no zone information, so no offset is appended.
+func formatTimeValue(value time.Time, dataType string) string {
+	const layout = "2006-01-02 15:04:05.999999999"
+	if strings.EqualFold(dataType, "datetimeoffset") {
+		return value.Format(layout + " -07:00")
+	}
+	return value.Format(layout)
 }
 
 // SQL Server sends uniqueidentifier values in its mixed-endian storage order. Convert the first

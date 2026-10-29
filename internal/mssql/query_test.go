@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -97,6 +98,18 @@ func TestNormalizeValueKeepsBinaryCompactAndPreservesNull(t *testing.T) {
 	}
 	if value := normalizeValue(nil, "INT"); value != nil {
 		t.Fatalf("NULL became %#v", value)
+	}
+}
+
+func TestNormalizeValueKeepsDateTimeOffsetZone(t *testing.T) {
+	taipei := time.FixedZone("", 8*60*60)
+	stamp := time.Date(2026, 9, 21, 8, 30, 0, 0, taipei)
+
+	if value := normalizeValue(stamp, "DATETIMEOFFSET"); value != "2026-09-21 08:30:00 +08:00" {
+		t.Fatalf("datetimeoffset = %#v", value)
+	}
+	if value := normalizeValue(stamp, "datetime2"); value != "2026-09-21 08:30:00" {
+		t.Fatalf("datetime2 = %#v", value)
 	}
 }
 
