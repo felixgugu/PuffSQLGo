@@ -168,7 +168,10 @@
       ref="gridContainerRef"
       class="sqlight-grid flex-1 w-full overflow-hidden relative"
       :class="{ 'is-h-scrolling': isHorizontalScrolling }"
-      :style="{ '--sqlight-grid-font': settingsStore.gridFontFamily }"
+      :style="{
+        '--sqlight-grid-font': settingsStore.gridFontFamily,
+        '--sqlight-grid-font-size': `${settingsStore.gridFontSize}px`,
+      }"
       @contextmenu.prevent
       @scroll.capture.passive="handleGridScroll"
     >
@@ -400,7 +403,7 @@
             <Check v-else class="w-3.5 h-3.5 text-ok" />
           </div>
           <div>
-            <h3 class="font-semibold text-sm text-dark-100 leading-tight">
+            <h3 class="font-semibold text-base text-dark-100 leading-tight">
               {{ requiresModificationPrompt ? (commitModal.confirmStep === 2 ? '確認提交資料變更 (高危最終確認 2/2)' : '確認提交資料變更 (修改提示 1/2)') : '確認提交資料變更 (Commit Changes)' }}
             </h3>
             <p class="text-xxs text-dark-400 mt-0.5">

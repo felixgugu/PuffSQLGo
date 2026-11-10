@@ -29,7 +29,7 @@ func (f *fakeCredentials) Delete(id string) error {
 
 func TestSaveUpdateCopyAndDeleteProfile(t *testing.T) {
 	credentials := &fakeCredentials{values: map[string]string{}}
-	manager := NewManager(storage.NewAt(t.TempDir()))
+	manager := NewManager(storage.NewAt(t.TempDir()), nil)
 	manager.credentials = credentials
 
 	password := "s3cret"
@@ -81,7 +81,7 @@ func TestSaveUpdateCopyAndDeleteProfile(t *testing.T) {
 }
 
 func TestProfileValidationAndCredentialFailures(t *testing.T) {
-	manager := NewManager(storage.NewAt(t.TempDir()))
+	manager := NewManager(storage.NewAt(t.TempDir()), nil)
 	manager.credentials = &fakeCredentials{values: map[string]string{}}
 	if _, err := manager.SaveProfile(model.SaveConnectionRequest{}); err == nil {
 		t.Fatal("empty names must be rejected")

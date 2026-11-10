@@ -262,6 +262,16 @@ export const themeManager = {
   },
 
   /**
+   * Apply the primary UI font size in px. Heading, secondary and caption are derived from
+   * `--app-font-size-primary` by rem math in main.css, so this is the only value to write.
+   */
+  applyUiFontSize(primaryPx: number) {
+    if (typeof document === 'undefined') return;
+    const size = Number.isFinite(primaryPx) && primaryPx > 0 ? primaryPx : 14;
+    document.documentElement.style.setProperty('--app-font-size-primary', `${size / 16}rem`);
+  },
+
+  /**
    * Initialize all theme settings from stored preferences
    */
   initTheme(settings: AppSettings) {
@@ -270,5 +280,6 @@ export const themeManager = {
     this.applyColorMode(currentMode);
     this.applySurfaceColor(currentSurfaceName);
     this.applyGlobalFontFamily(settings.globalFontFamily || DEFAULT_GLOBAL_FONT_FAMILY);
+    this.applyUiFontSize(settings.uiFontSize || 14);
   },
 };

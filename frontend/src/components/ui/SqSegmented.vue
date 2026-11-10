@@ -68,7 +68,7 @@ const normalized = computed<SqSegmentOption[]>(() =>
   background: transparent;
   color: rgb(var(--color-dark-400));
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   cursor: pointer;
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
@@ -76,7 +76,7 @@ const normalized = computed<SqSegmentOption[]>(() =>
 .sq-seg--sm .sq-seg__item {
   height: 20px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--app-font-size-caption);
 }
 
 .sq-seg__item:hover:not(.is-active) {

@@ -233,7 +233,7 @@
 
       <!-- Floating Stats & Linking Tip (Bottom Left) -->
       <div
-        class="absolute bottom-3 left-3 px-3 py-1.5 rounded-md text-[11px] flex items-center space-x-3 pointer-events-none z-10 font-sans shadow-raised border"
+        class="absolute bottom-3 left-3 px-3 py-1.5 rounded-md text-xxs flex items-center space-x-3 pointer-events-none z-10 font-sans shadow-raised border"
         :class="isLightTheme ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-dark-900 border-dark-750 text-dark-300'"
       >
         <span>{{ $t('erDiagram.tableCount') }}<strong :class="isLightTheme ? 'text-slate-900' : 'text-dark-100'">{{ nodeCount }}</strong></span>
@@ -263,7 +263,7 @@
         @click.stop
       >
         <!-- Header Info -->
-        <div class="px-3 py-1.5 border-b text-[11px]" :class="isLightTheme ? 'border-slate-100' : 'border-dark-750'">
+        <div class="px-3 py-1.5 border-b text-xxs" :class="isLightTheme ? 'border-slate-100' : 'border-dark-750'">
           <div class="flex items-center space-x-1.5 font-semibold mb-1 font-sans" :class="isLightTheme ? 'text-accent' : 'text-accent'">
             <Link2 class="w-3.5 h-3.5" />
             <span>{{ $t('erDiagram.relationProperties') }}</span>

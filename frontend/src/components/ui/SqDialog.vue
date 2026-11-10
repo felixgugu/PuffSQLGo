@@ -255,7 +255,7 @@ function onMaskClick(event: MouseEvent) {
   gap: 8px;
   min-width: 0;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--app-font-size-heading);
   font-weight: 600;
   color: rgb(var(--color-dark-100));
   overflow: hidden;

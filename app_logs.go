@@ -1,6 +1,12 @@
 package main
 
-import "puffsql/internal/applog"
+import (
+	"fmt"
+	"strings"
+
+	"puffsql/internal/applog"
+	"puffsql/internal/errlog"
+)
 
 func (a *App) LogAIRequest(endpoint string, method *string, content string) error {
 	value := "POST"
@@ -33,4 +39,35 @@ func (a *App) GetAILogPath() string {
 
 func (a *App) ClearAILog() (string, error) {
 	return applog.Clear(a.logger.AIPath(), "PuffSQL AI Request Log")
+}
+
+func (a *App) GetErrorLogPath() string {
+	return a.errLogger.Path()
+}
+
+func (a *App) OpenErrorLog() (string, error) {
+	path := a.errLogger.Path()
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("error log is not available")
+	}
+	return a.logger.Open(path)
+}
+
+// LogClientError lets the Vue layer persist unhandled exceptions and rejected promises in the
+// same diagnostics file as backend failures.
+func (a *App) LogClientError(level string, message string, stack string) error {
+	normalized := strings.ToUpper(strings.TrimSpace(level))
+	if normalized == "" {
+		normalized = "ERROR"
+	}
+	if len(normalized) > 16 {
+		normalized = normalized[:16]
+	}
+	a.errLogger.Write(errlog.Entry{
+		Level:   normalized,
+		Source:  "client",
+		Message: message,
+		Stack:   stack,
+	})
+	return nil
 }

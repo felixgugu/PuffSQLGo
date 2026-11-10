@@ -73,7 +73,7 @@ defineExpose({
   border-radius: 4px;
   color: rgb(var(--color-dark-100));
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   transition: border-color 120ms ease-out;
 }
 

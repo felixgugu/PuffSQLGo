@@ -25,3 +25,25 @@ export function generateTableSelectSql(
 
   return `SELECT * FROM ${parts.join('.')};\n`;
 }
+
+/**
+ * Builds the single-column SELECT the quick finder offers for a column hit.
+ * Same identifier treatment and no TOP clause as `generateTableSelectSql`.
+ */
+export function generateColumnSelectSql(
+  schema: string | null | undefined,
+  table: string,
+  column: string
+): string {
+  const cleanSchema = (schema || '').trim();
+  const cleanTable = table.trim();
+  const cleanColumn = column.trim();
+
+  const target: string[] = [];
+  if (cleanSchema) {
+    target.push(wrapIdentifierIfNeeded(cleanSchema));
+  }
+  target.push(wrapIdentifierIfNeeded(cleanTable));
+
+  return `SELECT ${wrapIdentifierIfNeeded(cleanColumn)} FROM ${target.join('.')};\n`;
+}

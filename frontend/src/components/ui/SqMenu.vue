@@ -146,7 +146,7 @@ watch(
   flex-direction: column;
   gap: 1px;
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
 }
 
 .sq-menu__item {

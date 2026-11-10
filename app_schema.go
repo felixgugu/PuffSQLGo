@@ -8,13 +8,17 @@ import (
 )
 
 func (a *App) GetDatabases(connectionID string) ([]model.DatabaseItem, error) {
+	defer a.recoverPanic("schema.databases")
 	ctx, cancel := context.WithTimeout(a.context(), 45*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.databases", err)
 		return nil, err
 	}
-	return server.GetDatabases(ctx)
+	items, err := server.GetDatabases(ctx)
+	a.logError("schema.databases", err)
+	return items, err
 }
 
 func (a *App) GetTables(
@@ -22,13 +26,17 @@ func (a *App) GetTables(
 	database *string,
 	schema *string,
 ) ([]model.TableItem, error) {
+	defer a.recoverPanic("schema.tables")
 	ctx, cancel := context.WithTimeout(a.context(), 45*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.tables", err)
 		return nil, err
 	}
-	return server.GetTables(ctx, database, schema)
+	items, err := server.GetTables(ctx, database, schema)
+	a.logError("schema.tables", err)
+	return items, err
 }
 
 func (a *App) GetColumns(
@@ -37,13 +45,17 @@ func (a *App) GetColumns(
 	schema string,
 	table string,
 ) ([]model.ColumnItem, error) {
+	defer a.recoverPanic("schema.columns")
 	ctx, cancel := context.WithTimeout(a.context(), 45*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.columns", err)
 		return nil, err
 	}
-	return server.GetColumns(ctx, database, schema, table)
+	items, err := server.GetColumns(ctx, database, schema, table)
+	a.logError("schema.columns", err)
+	return items, err
 }
 
 func (a *App) GetTableObjects(
@@ -52,26 +64,34 @@ func (a *App) GetTableObjects(
 	schema string,
 	table string,
 ) (model.TableObjects, error) {
+	defer a.recoverPanic("schema.table_objects")
 	ctx, cancel := context.WithTimeout(a.context(), 20*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.table_objects", err)
 		return model.TableObjects{}, err
 	}
-	return server.GetTableObjects(ctx, database, schema, table)
+	objects, err := server.GetTableObjects(ctx, database, schema, table)
+	a.logError("schema.table_objects", err)
+	return objects, err
 }
 
 func (a *App) GetDatabaseSchema(
 	connectionID string,
 	database *string,
 ) ([]model.TableSchema, error) {
+	defer a.recoverPanic("schema.database_schema")
 	ctx, cancel := context.WithTimeout(a.context(), 90*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.database_schema", err)
 		return nil, err
 	}
-	return server.GetDatabaseSchema(ctx, database)
+	schema, err := server.GetDatabaseSchema(ctx, database)
+	a.logError("schema.database_schema", err)
+	return schema, err
 }
 
 func (a *App) GetForeignKeys(
@@ -80,21 +100,29 @@ func (a *App) GetForeignKeys(
 	schema *string,
 	table *string,
 ) ([]model.ForeignKeyItem, error) {
+	defer a.recoverPanic("schema.foreign_keys")
 	ctx, cancel := context.WithTimeout(a.context(), 60*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.foreign_keys", err)
 		return nil, err
 	}
-	return server.GetForeignKeys(ctx, database, schema, table)
+	items, err := server.GetForeignKeys(ctx, database, schema, table)
+	a.logError("schema.foreign_keys", err)
+	return items, err
 }
 
 func (a *App) SwitchDatabase(connectionID string, database string) error {
+	defer a.recoverPanic("schema.switch_database")
 	ctx, cancel := context.WithTimeout(a.context(), 30*time.Second)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("schema.switch_database", err)
 		return err
 	}
-	return server.SwitchDatabase(ctx, database)
+	err = server.SwitchDatabase(ctx, database)
+	a.logError("schema.switch_database", err)
+	return err
 }

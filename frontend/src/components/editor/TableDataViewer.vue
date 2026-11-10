@@ -61,7 +61,10 @@
       ref="gridContainerRef"
       class="sqlight-grid flex-1 w-full overflow-hidden relative"
       :class="{ 'is-h-scrolling': isHorizontalScrolling }"
-      :style="{ '--sqlight-grid-font': settingsStore.gridFontFamily }"
+      :style="{
+        '--sqlight-grid-font': settingsStore.gridFontFamily,
+        '--sqlight-grid-font-size': `${settingsStore.gridFontSize}px`,
+      }"
       @contextmenu.prevent
       @scroll.capture.passive="handleGridScroll"
     >

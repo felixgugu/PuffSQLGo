@@ -1,4 +1,9 @@
-export type QuickFinderObjectType = 'table' | 'view' | 'procedure' | 'function';
+export type QuickFinderObjectType =
+  | 'table'
+  | 'view'
+  | 'procedure'
+  | 'function'
+  | 'column';
 
 export interface QuickFinderItem {
   id: string;
@@ -7,6 +12,8 @@ export interface QuickFinderItem {
   type: QuickFinderObjectType;
   database: string;
   connId: string;
+  /** For `type: 'column'`: the table or view that owns the column. */
+  table?: string;
 }
 
 export interface FuzzyMatchResult {
@@ -25,6 +32,8 @@ export interface ScoredQuickFinderItem {
   score: number;
   nameIndices: number[];
   schemaIndices: number[];
+  /** For column items: highlight indices inside the owning table name. */
+  ownerIndices: number[];
 }
 
 /**
@@ -165,10 +174,13 @@ export interface ParsedSearchQuery {
  * - 'v: sales' or 'view: sales' -> type: view
  * - 'p: proc' or 'sp: proc' or 'proc: proc' -> type: procedure
  * - 'f: fn' or 'func: fn' or 'function: fn' -> type: function
+ * - 'c: id' or 'col: id' or 'column: id' -> type: column
  */
 export function parseSearchQuery(input: string): ParsedSearchQuery {
   const trimmed = input.trim();
-  const prefixMatch = trimmed.match(/^(t|table|v|view|p|sp|proc|procedure|f|fn|func|function):\s*(.*)$/i);
+  const prefixMatch = trimmed.match(
+    /^(t|table|v|view|p|sp|proc|procedure|f|fn|func|function|c|col|column):\s*(.*)$/i
+  );
 
   if (!prefixMatch) {
     return { rawQuery: input, cleanQuery: trimmed };
@@ -186,6 +198,8 @@ export function parseSearchQuery(input: string): ParsedSearchQuery {
     explicitTypeFilter = 'procedure';
   } else if (prefix === 'f' || prefix === 'fn' || prefix === 'func' || prefix === 'function') {
     explicitTypeFilter = 'function';
+  } else if (prefix === 'c' || prefix === 'col' || prefix === 'column') {
+    explicitTypeFilter = 'column';
   }
 
   return {
@@ -212,32 +226,82 @@ export function filterAndRankQuickObjects(
     : items;
 
   if (!cleanQuery) {
-    // Return sorted alphabetically if query is empty
-    return filtered.slice(0, maxResults).map((item) => ({
+    // Columns are only listed when the user explicitly asks for them: a database can hold tens of
+    // thousands, and the unfiltered "all" view should stay a list of objects.
+    const initial = effectiveType
+      ? filtered
+      : filtered.filter((item) => item.type !== 'column');
+    return initial.slice(0, maxResults).map((item) => ({
       item,
       score: 0,
       nameIndices: [],
       schemaIndices: [],
+      ownerIndices: [],
     }));
   }
 
   const results: ScoredQuickFinderItem[] = [];
 
   for (const item of filtered) {
-    // 1. Try matching object name directly
+    // 1. Try matching the object (or column) name directly
     const nameMatch = fuzzyMatch(cleanQuery, item.name);
 
     if (nameMatch.matched) {
       results.push({
         item,
-        score: nameMatch.score + 50, // bonus for matching name directly
+        // Columns score a little lower so an object with the same name stays on top.
+        score: nameMatch.score + (item.type === 'column' ? 40 : 50),
         nameIndices: nameMatch.indices,
         schemaIndices: [],
+        ownerIndices: [],
       });
       continue;
     }
 
-    // 2. Try matching full qualified schema.name
+    // 2. Columns also match through their owning table: "Orders.OrderId" / "OrderId".
+    if (item.type === 'column' && item.table) {
+      const ownerTarget = `${item.table}.${item.name}`;
+      const ownerMatch = fuzzyMatch(cleanQuery, ownerTarget);
+
+      if (ownerMatch.matched) {
+        const ownerLen = item.table.length;
+        const ownerIndices: number[] = [];
+        const nameIndices: number[] = [];
+
+        for (const idx of ownerMatch.indices) {
+          if (idx < ownerLen) {
+            ownerIndices.push(idx);
+          } else if (idx > ownerLen) {
+            nameIndices.push(idx - ownerLen - 1);
+          }
+        }
+
+        results.push({
+          item,
+          score: ownerMatch.score,
+          nameIndices,
+          schemaIndices: [],
+          ownerIndices,
+        });
+        continue;
+      }
+
+      // 3. Last chance: the fully qualified schema.table.column (no per-segment highlight).
+      const qualified = `${item.schema}.${item.table}.${item.name}`;
+      const qualifiedMatch = fuzzyMatch(cleanQuery, qualified);
+      if (qualifiedMatch.matched) {
+        results.push({
+          item,
+          score: qualifiedMatch.score,
+          nameIndices: [],
+          schemaIndices: [],
+          ownerIndices: [],
+        });
+      }
+      continue;
+    }
+
+    // 4. Try matching full qualified schema.name
     const fullTarget = `${item.schema}.${item.name}`;
     const fullMatch = fuzzyMatch(cleanQuery, fullTarget);
 
@@ -259,6 +323,7 @@ export function filterAndRankQuickObjects(
         score: fullMatch.score,
         nameIndices,
         schemaIndices,
+        ownerIndices: [],
       });
     }
   }
@@ -269,6 +334,7 @@ export function filterAndRankQuickObjects(
     view: 3,
     procedure: 2,
     function: 1,
+    column: 0,
   };
 
   results.sort((a, b) => {

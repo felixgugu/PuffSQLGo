@@ -80,6 +80,39 @@
           </span>
         </div>
 
+        <!-- UI Font Size: one primary value, heading/secondary derived in rem -->
+        <div class="space-y-2.5 pb-4 border-b border-dark-800">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="font-medium text-dark-100 block">{{ $t('settingsModal.uiFontSize') }}</label>
+              <span class="text-xxs text-dark-400">
+                {{
+                  $t('settingsModal.uiFontSizeDesc', {
+                    primary: settingsStore.uiFontSize,
+                    secondary: settingsStore.uiFontSize - 1,
+                    heading: settingsStore.uiFontSize + 2,
+                  })
+                }}
+              </span>
+            </div>
+            <SqSelect
+              :model-value="settingsStore.uiFontSize"
+              :options="uiFontSizeOptions"
+              option-label="label"
+              option-value="value"
+              class="min-w-[120px]"
+              @update:model-value="handleUiFontSizeChange"
+            />
+          </div>
+          <div class="rounded-md border border-dark-750 bg-dark-900/70 px-3 py-2.5 space-y-1">
+            <div class="text-base font-semibold text-dark-100">
+              {{ $t('settingsModal.uiFontSizePreviewHeading') }}
+            </div>
+            <div class="text-sm text-dark-200">{{ $t('settingsModal.uiFontSizePreviewPrimary') }}</div>
+            <div class="text-xs text-dark-400">{{ $t('settingsModal.uiFontSizePreviewSecondary') }}</div>
+          </div>
+        </div>
+
         <!-- 1. Color Mode (Dark / Light) -->
         <div class="flex items-center justify-between pb-4 border-b border-dark-800">
           <div>
@@ -251,6 +284,21 @@
           />
         </div>
 
+        <!-- Result grid font size -->
+        <div class="flex items-center justify-between">
+          <div class="pr-4">
+            <label class="font-medium text-dark-100 block">{{ $t('settingsModal.gridFontSize') }}</label>
+            <span class="text-xxs text-dark-400">{{ $t('settingsModal.gridFontSizeDesc') }}</span>
+          </div>
+          <SqSelect
+            v-model="settingsStore.gridFontSize"
+            :options="gridFontSizeOptions"
+            option-label="label"
+            option-value="value"
+            class="min-w-[120px]"
+          />
+        </div>
+
         <!-- Max Result Tabs -->
         <div class="flex items-center justify-between">
           <div class="pr-4">
@@ -328,7 +376,7 @@
             />
             <div>
               <div class="flex items-center space-x-2">
-                <span class="font-bold text-dark-100 text-sm">PuffSQL</span>
+                <span class="font-bold text-dark-100 text-base">PuffSQL</span>
                 <SqChip tone="neutral" :label="`v${appVersion}`" class="font-mono" />
               </div>
               <span class="text-xxs text-dark-400 font-mono">Lightweight & Fast SQL Client</span>
@@ -350,7 +398,7 @@
           <div class="grid grid-cols-2 gap-2.5 text-xxs font-mono">
             <!-- Group 1: 查詢執行與中斷 -->
             <div class="bg-dark-900 p-2.5 rounded border border-dark-800 space-y-2">
-              <div class="text-[11px] font-semibold text-ok flex items-center space-x-1.5 pb-1 border-b border-dark-800">
+              <div class="text-xxs font-semibold text-ok flex items-center space-x-1.5 pb-1 border-b border-dark-800">
                 <Play class="w-3 h-3"></Play>
                 <span>{{ $t('settingsModal.shortcutGroupRun') }}</span>
               </div>
@@ -370,7 +418,7 @@
 
             <!-- Group 2: 分頁與檔案操作 -->
             <div class="bg-dark-900 p-2.5 rounded border border-dark-800 space-y-2">
-              <div class="text-[11px] font-semibold text-info flex items-center space-x-1.5 pb-1 border-b border-dark-800">
+              <div class="text-xxs font-semibold text-info flex items-center space-x-1.5 pb-1 border-b border-dark-800">
                 <Folder class="w-3 h-3"></Folder>
                 <span>{{ $t('settingsModal.shortcutGroupTabs') }}</span>
               </div>
@@ -390,7 +438,7 @@
 
             <!-- Group 3: 編輯器輔助與格式化 -->
             <div class="bg-dark-900 p-2.5 rounded border border-dark-800 space-y-2">
-              <div class="text-[11px] font-semibold text-warn flex items-center space-x-1.5 pb-1 border-b border-dark-800">
+              <div class="text-xxs font-semibold text-warn flex items-center space-x-1.5 pb-1 border-b border-dark-800">
                 <FileCode class="w-3 h-3"></FileCode>
                 <span>{{ $t('settingsModal.shortcutGroupEditor') }}</span>
               </div>
@@ -418,7 +466,7 @@
 
             <!-- Group 4: 檢索、結果與圖表 -->
             <div class="bg-dark-900 p-2.5 rounded border border-dark-800 space-y-2">
-              <div class="text-[11px] font-semibold text-er flex items-center space-x-1.5 pb-1 border-b border-dark-800">
+              <div class="text-xxs font-semibold text-er flex items-center space-x-1.5 pb-1 border-b border-dark-800">
                 <Search class="w-3 h-3"></Search>
                 <span>{{ $t('settingsModal.shortcutGroupExplore') }}</span>
               </div>
@@ -565,6 +613,29 @@ const fontSizeOptions = [
   { label: '18 px', value: 18 },
   { label: '20 px', value: 20 },
 ];
+
+const uiFontSizeOptions = [
+  { label: '13 px', value: 13 },
+  { label: '14 px (預設)', value: 14 },
+  { label: '15 px', value: 15 },
+  { label: '16 px', value: 16 },
+];
+
+const gridFontSizeOptions = [
+  { label: '11 px', value: 11 },
+  { label: '12 px', value: 12 },
+  { label: '13 px (預設)', value: 13 },
+  { label: '14 px', value: 14 },
+  { label: '15 px', value: 15 },
+  { label: '16 px', value: 16 },
+];
+
+function handleUiFontSizeChange(val: unknown) {
+  const size = typeof val === 'number' ? val : Number(val);
+  if (Number.isFinite(size)) {
+    settingsStore.setUiFontSize(size);
+  }
+}
 
 function handleReset() {
   if (confirm(t('settingsModal.resetConfirm'))) {

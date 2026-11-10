@@ -11,18 +11,23 @@
       // the minimal design is light-first.
       (function () {
         var mode = 'light';
+        var uiFontSize = 14;
         try {
           var raw = localStorage.getItem('sqlight_app_settings');
           if (raw) {
             var parsed = JSON.parse(raw);
             if (parsed && parsed.colorMode === 'dark') mode = 'dark';
+            // Mirror the 外觀 › 介面字級 setting before first paint so the type scale never jumps.
+            if (parsed && typeof parsed.uiFontSize === 'number') uiFontSize = parsed.uiFontSize;
           }
         } catch (e) {
           /* ignore unreadable settings and keep the light default */
         }
+        uiFontSize = Math.min(16, Math.max(13, uiFontSize));
         var root = document.documentElement;
         root.classList.toggle('dark', mode === 'dark');
         root.style.colorScheme = mode;
+        root.style.setProperty('--app-font-size-primary', uiFontSize / 16 + 'rem');
       })();
 
       // Early guard to suppress system/browser context menu

@@ -21,7 +21,7 @@ func TestLiveSQLServerSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(store)
+	manager := NewManager(store, nil)
 	profiles, err := manager.Profiles()
 	if err != nil {
 		t.Fatal(err)

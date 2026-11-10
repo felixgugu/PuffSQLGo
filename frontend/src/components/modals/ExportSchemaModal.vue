@@ -82,7 +82,7 @@
           <div v-if="showSqlPreview" class="p-3 border-t border-dark-750 space-y-3 max-h-60 overflow-y-auto">
             <div v-for="(item, idx) in exportItems" :key="item.key" class="space-y-1">
               <div class="text-xxs font-semibold text-dark-300">{{ idx + 1 }}. {{ getItemTitle(item.key) }}</div>
-              <pre class="bg-dark-950 p-2 rounded border border-dark-800 font-mono text-[11px] text-dark-300 overflow-x-auto select-text">{{ item.sql }}</pre>
+              <pre class="bg-dark-950 p-2 rounded border border-dark-800 font-mono text-xxs text-dark-300 overflow-x-auto select-text">{{ item.sql }}</pre>
             </div>
           </div>
         </div>
@@ -286,7 +286,7 @@
           </div>
 
           <div class="space-y-1">
-            <h3 class="text-sm font-semibold text-dark-100">{{ $t('exportSchemaModal.completedTitle') }}</h3>
+            <h3 class="text-base font-semibold text-dark-100">{{ $t('exportSchemaModal.completedTitle') }}</h3>
             <p class="text-xs text-dark-300">
               {{ $t('exportSchemaModal.completedDesc') }}
             </p>

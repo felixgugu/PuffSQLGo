@@ -79,14 +79,14 @@ const iconOnly = computed(() => !slots.default && !slots.label && !props.label?.
   background: transparent;
   color: rgb(var(--color-dark-300));
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   font-weight: 400;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 
-.sq-btn--xs { height: 20px; padding: 0 6px; font-size: 11px; }
+.sq-btn--xs { height: 20px; padding: 0 6px; font-size: var(--app-font-size-caption); }
 .sq-btn--sm { height: 24px; padding: 0 8px; }
 .sq-btn--md { height: 28px; }
 .sq-btn--lg { height: 32px; padding: 0 12px; }

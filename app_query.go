@@ -15,6 +15,7 @@ func (a *App) ExecuteQuery(
 	requestID *string,
 	timeoutSeconds *int,
 ) (model.QueryResult, error) {
+	defer a.recoverPanic("query.execute")
 	if strings.TrimSpace(sql) == "" {
 		return model.QueryResult{
 			ResultSets: []model.ResultSet{},
@@ -43,7 +44,10 @@ func (a *App) ExecuteQuery(
 }
 
 func (a *App) CancelQuery(connectionID string, requestID *string) error {
-	return a.manager.CancelQuery(connectionID, requestID)
+	defer a.recoverPanic("query.cancel")
+	err := a.manager.CancelQuery(connectionID, requestID)
+	a.logError("query.cancel", err)
+	return err
 }
 
 func (a *App) GetConnectionSPID(connectionID string) *int {

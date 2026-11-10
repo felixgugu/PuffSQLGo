@@ -124,7 +124,7 @@
                   </div>
                 </div>
                 <!-- 浮動卡片程式碼區 -->
-                <pre class="p-3 overflow-y-auto max-h-72 m-0 text-[11px] font-mono leading-relaxed bg-black/40 text-ok whitespace-pre-wrap break-all select-text font-medium"><code>{{ aiChatStore.currentSql }}</code></pre>
+                <pre class="p-3 overflow-y-auto max-h-72 m-0 text-xxs font-mono leading-relaxed bg-black/40 text-ok whitespace-pre-wrap break-all select-text font-medium"><code>{{ aiChatStore.currentSql }}</code></pre>
               </div>
             </Transition>
           </div>
@@ -150,7 +150,7 @@
               <Sparkles class="w-5 h-5" />
             </div>
             <div>
-              <h4 class="font-semibold text-sm text-dark-100">{{ $t('aiSqlChat.welcomeTitle') }}</h4>
+              <h4 class="font-semibold text-base text-dark-100">{{ $t('aiSqlChat.welcomeTitle') }}</h4>
               <p class="text-dark-400 mt-1 max-w-sm leading-relaxed text-xs">
                 {{ $t('aiSqlChat.welcomeSub') }}
               </p>
@@ -168,7 +168,7 @@
                   color: '#ffffff',
                 }"
               >
-                <div v-if="msg.sqlContext" class="mb-2 pb-1.5 border-b border-white/20 opacity-90 font-mono text-[11px] truncate">
+                <div v-if="msg.sqlContext" class="mb-2 pb-1.5 border-b border-white/20 opacity-90 font-mono text-xxs truncate">
                   <FileCode class="w-3 h-3 mr-1 inline-block align-text-bottom" />{{ $t('aiSqlChat.userSqlTag') }}{{ msg.sqlContext.slice(0, 50) }}...
                 </div>
                 <div class="whitespace-pre-wrap select-text font-sans">{{ msg.content }}</div>
@@ -191,7 +191,7 @@
 
                     <!-- SQL Code Block -->
                     <div v-else-if="segment.type === 'sql'" class="my-2.5 rounded border border-dark-700 bg-dark-900 overflow-hidden select-none">
-                      <div class="flex items-center justify-between px-3 py-1 text-[11px] border-b border-dark-750 bg-dark-800 text-black dark:text-plan">
+                      <div class="flex items-center justify-between px-3 py-1 text-xxs border-b border-dark-750 bg-dark-800 text-black dark:text-plan">
                         <span class="font-mono font-semibold text-black dark:text-plan">{{ $t('aiSqlChat.suggestionTitle') }}</span>
                         <div class="flex items-center space-x-1.5">
                           <SqButton
@@ -214,7 +214,7 @@
                           </SqButton>
                         </div>
                       </div>
-                      <pre class="p-3 overflow-x-auto text-[11px] font-mono leading-relaxed bg-black/30 m-0 select-text"><code>{{ segment.value }}</code></pre>
+                      <pre class="p-3 overflow-x-auto text-xxs font-mono leading-relaxed bg-black/30 m-0 select-text"><code>{{ segment.value }}</code></pre>
                     </div>
                   </template>
                 </div>
@@ -234,7 +234,7 @@
           <!-- 運算中進度列 -->
           <div v-if="aiChatStore.isGenerating" class="flex items-center space-x-2 py-2 text-dark-400">
             <div class="sq-progress-line w-24" role="progressbar" aria-label="分析中" />
-            <span class="text-[11px]">{{ $t('aiSqlChat.analyzing', { seconds: aiChatStore.executionElapsedSeconds }) }}</span>
+            <span class="text-xxs">{{ $t('aiSqlChat.analyzing', { seconds: aiChatStore.executionElapsedSeconds }) }}</span>
             <SqButton
               :label="$t('aiSqlChat.abortBtn')"
               size="xs"
@@ -249,7 +249,7 @@
 
         <!-- 快捷提示詞晶片 (純文字無圖示，點選填入輸入框) -->
         <div class="px-3 py-1.5 border-t border-dark-750 bg-dark-850 flex items-center space-x-2 overflow-x-auto flex-shrink-0 select-none scrollbar-none">
-          <span class="text-[11px] text-dark-400 flex-shrink-0">
+          <span class="text-xxs text-dark-400 flex-shrink-0">
             {{ $t('aiSqlChat.quickPromptsLabel') }}
           </span>
           <SqButton

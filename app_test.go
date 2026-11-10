@@ -9,6 +9,7 @@ import (
 	"unicode/utf16"
 
 	"puffsql/internal/applog"
+	"puffsql/internal/errlog"
 	"puffsql/internal/model"
 	"puffsql/internal/storage"
 )
@@ -20,7 +21,11 @@ func testApp(t *testing.T) *App {
 	if err := logger.Init(); err != nil {
 		t.Fatal(err)
 	}
-	return &App{store: store, logger: logger}
+	return &App{
+		store:     store,
+		logger:    logger,
+		errLogger: errlog.New(filepath.Join(store.Dir(), errlog.FileName)),
+	}
 }
 
 func TestTemplateFacadeRoundTrip(t *testing.T) {
@@ -111,6 +116,20 @@ func TestSQLFileReaderHandlesUTF16LittleEndian(t *testing.T) {
 
 func TestLogFacadeLifecycle(t *testing.T) {
 	app := testApp(t)
+	if !strings.HasSuffix(app.GetErrorLogPath(), errlog.FileName) {
+		t.Fatalf("error log path = %s", app.GetErrorLogPath())
+	}
+	if err := app.LogClientError("error", "client exploded", "at App.vue:1"); err != nil {
+		t.Fatal(err)
+	}
+	errorData, err := os.ReadFile(app.GetErrorLogPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(errorData), "client exploded") ||
+		!strings.Contains(string(errorData), "source=client") {
+		t.Fatalf("client error log is incomplete:\n%s", errorData)
+	}
 	method := "POST"
 	status := 201
 	duration := uint64(20)

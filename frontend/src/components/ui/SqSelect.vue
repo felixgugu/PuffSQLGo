@@ -270,7 +270,7 @@ watch(isOpen, async (open) => {
   border-radius: 4px;
   color: rgb(var(--color-dark-100));
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   cursor: pointer;
   transition: border-color 120ms ease-out;
 }
@@ -335,7 +335,7 @@ watch(isOpen, async (open) => {
   background: transparent;
   color: rgb(var(--color-dark-200));
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   text-align: left;
   cursor: pointer;
 }
@@ -354,7 +354,7 @@ watch(isOpen, async (open) => {
 .sq-select__empty {
   padding: 8px;
   color: rgb(var(--color-dark-500));
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   font-style: italic;
 }
 

@@ -68,8 +68,14 @@ export default {
         raised: '0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.08)',
         overlay: '0 8px 24px rgba(16, 24, 40, 0.12)',
       },
+      // One rem-based type scale for the whole app. The sizes resolve through the tokens in
+      // main.css, so the single "介面字級" setting scales every utility at once:
+      // heading 16px / primary 14px / secondary 13px / caption 12px at the default.
       fontSize: {
-        'xxs': '0.6875rem',
+        'xxs': ['var(--app-font-size-caption)', { lineHeight: '1.45' }],
+        'xs': ['var(--app-font-size-secondary)', { lineHeight: '1.4' }],
+        'sm': ['var(--app-font-size-primary)', { lineHeight: '1.45' }],
+        'base': ['var(--app-font-size-heading)', { lineHeight: '1.5' }],
       }
     },
   },

@@ -42,7 +42,7 @@ defineEmits<{
   gap: 6px;
   cursor: pointer;
   font-family: var(--app-font-sans);
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   color: rgb(var(--color-dark-300));
 }
 

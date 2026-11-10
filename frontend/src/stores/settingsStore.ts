@@ -23,6 +23,9 @@ export interface AppSettings {
   globalFontFamily: string;
   locale: SupportedLocale;
 
+  /** Primary UI font size in px. Heading/secondary/caption derive from it in rem. */
+  uiFontSize: number;
+
   editorFontSize: number;
   editorFontFamily: string;
   editorWordWrap: 'on' | 'off';
@@ -45,11 +48,21 @@ export interface AppSettings {
   /** Backdrop height as a percentage of the editor viewport (10-100). */
   editorBackgroundImageSize: number;
   gridFontFamily: string;
+  gridFontSize: number;
   erTheme: 'dark' | 'light';
   hiddenTableRules?: FilterRule[];
 }
 
 const STORAGE_KEY = 'sqlight_app_settings';
+
+/** Defaults for the three independently adjustable text surfaces. */
+export const DEFAULT_UI_FONT_SIZE = 14;
+export const DEFAULT_EDITOR_FONT_SIZE = 14;
+export const DEFAULT_GRID_FONT_SIZE = 13;
+export const MIN_UI_FONT_SIZE = 13;
+export const MAX_UI_FONT_SIZE = 16;
+export const MIN_GRID_FONT_SIZE = 11;
+export const MAX_GRID_FONT_SIZE = 16;
 
 /** Coerces a persisted number into `[min, max]`, falling back when it is missing or not numeric. */
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -65,7 +78,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   globalFontFamily: DEFAULT_GLOBAL_FONT_FAMILY,
   locale: DEFAULT_LOCALE,
 
-  editorFontSize: 13,
+  uiFontSize: DEFAULT_UI_FONT_SIZE,
+
+  editorFontSize: DEFAULT_EDITOR_FONT_SIZE,
   editorFontFamily: '"Fira Code", Consolas, Monaco, monospace',
   editorWordWrap: 'on',
   editorTabSize: 2,
@@ -80,6 +95,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorBackgroundImageOpacity: 0.25,
   editorBackgroundImageSize: 60,
   gridFontFamily: DEFAULT_GRID_FONT_FAMILY,
+  gridFontSize: DEFAULT_GRID_FONT_SIZE,
   erTheme: 'dark',
   hiddenTableRules: [],
 };
@@ -116,6 +132,13 @@ export function migrateStoredSettings(parsed: Record<string, any>): Record<strin
     }));
   }
 
+  // The app moved to one rem-based scale (primary 14 / secondary 13 / heading 16) and the editor
+  // baseline followed it. Blobs written before this change have no uiFontSize, so only those are
+  // upgraded from the old 13px default; an explicit 13px choice saved afterwards is preserved.
+  if (migrated.uiFontSize === undefined && migrated.editorFontSize === 13) {
+    migrated.editorFontSize = DEFAULT_EDITOR_FONT_SIZE;
+  }
+
   return migrated;
 }
 
@@ -127,7 +150,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const globalFontFamily = ref<string>(initial.globalFontFamily || DEFAULT_GLOBAL_FONT_FAMILY);
   const locale = ref<SupportedLocale>(initial.locale || DEFAULT_LOCALE);
 
-  const editorFontSize = ref<number>(initial.editorFontSize);
+  const uiFontSize = ref<number>(
+    clampNumber(initial.uiFontSize, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, DEFAULT_UI_FONT_SIZE)
+  );
+  const editorFontSize = ref<number>(
+    clampNumber(initial.editorFontSize, 10, 24, DEFAULT_EDITOR_FONT_SIZE)
+  );
   const editorFontFamily = ref<string>(initial.editorFontFamily);
   const editorWordWrap = ref<'on' | 'off'>(initial.editorWordWrap);
   const editorTabSize = ref<number>(initial.editorTabSize);
@@ -146,6 +174,9 @@ export const useSettingsStore = defineStore('settings', () => {
     clampNumber(initial.editorBackgroundImageSize, 10, 100, DEFAULT_SETTINGS.editorBackgroundImageSize)
   );
   const gridFontFamily = ref<string>(initial.gridFontFamily || DEFAULT_GRID_FONT_FAMILY);
+  const gridFontSize = ref<number>(
+    clampNumber(initial.gridFontSize, MIN_GRID_FONT_SIZE, MAX_GRID_FONT_SIZE, DEFAULT_GRID_FONT_SIZE)
+  );
   const erTheme = ref<'dark' | 'light'>(initial.erTheme || 'dark');
   const hiddenTableRules = ref<FilterRule[]>(
     initial.hiddenTableRules
@@ -167,6 +198,15 @@ export const useSettingsStore = defineStore('settings', () => {
   function setGlobalFontFamily(fontFamily: string) {
     globalFontFamily.value = fontFamily;
     themeManager.applyGlobalFontFamily(fontFamily);
+  }
+
+  /**
+   * Sets the primary UI font size in px. The heading/secondary/caption steps derive from it with
+   * rem math in `main.css`, so this one value rescales the whole interface.
+   */
+  function setUiFontSize(size: number) {
+    uiFontSize.value = clampNumber(size, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, DEFAULT_UI_FONT_SIZE);
+    themeManager.applyUiFontSize(uiFontSize.value);
   }
 
   function setLocale(newLocale: SupportedLocale) {
@@ -287,6 +327,7 @@ export const useSettingsStore = defineStore('settings', () => {
       surfaceColor: surfaceColor.value,
       globalFontFamily: globalFontFamily.value,
       locale: locale.value,
+      uiFontSize: uiFontSize.value,
       editorFontSize: editorFontSize.value,
       editorFontFamily: editorFontFamily.value,
       editorWordWrap: editorWordWrap.value,
@@ -302,6 +343,7 @@ export const useSettingsStore = defineStore('settings', () => {
       editorBackgroundImageOpacity: editorBackgroundImageOpacity.value,
       editorBackgroundImageSize: editorBackgroundImageSize.value,
       gridFontFamily: gridFontFamily.value,
+      gridFontSize: gridFontSize.value,
       erTheme: erTheme.value,
       hiddenTableRules: hiddenTableRules.value,
     };
@@ -321,6 +363,7 @@ export const useSettingsStore = defineStore('settings', () => {
       surfaceColor,
       globalFontFamily,
       locale,
+      uiFontSize,
       editorFontSize,
       editorFontFamily,
       editorWordWrap,
@@ -336,6 +379,7 @@ export const useSettingsStore = defineStore('settings', () => {
       editorBackgroundImageOpacity,
       editorBackgroundImageSize,
       gridFontFamily,
+      gridFontSize,
       erTheme,
       hiddenTableRules,
     ],
@@ -350,6 +394,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setSurfaceColor(DEFAULT_SETTINGS.surfaceColor);
     setGlobalFontFamily(DEFAULT_SETTINGS.globalFontFamily);
     setLocale(DEFAULT_SETTINGS.locale);
+    setUiFontSize(DEFAULT_SETTINGS.uiFontSize);
 
     editorFontSize.value = DEFAULT_SETTINGS.editorFontSize;
     editorFontFamily.value = DEFAULT_SETTINGS.editorFontFamily;
@@ -366,6 +411,7 @@ export const useSettingsStore = defineStore('settings', () => {
     editorBackgroundImageOpacity.value = DEFAULT_SETTINGS.editorBackgroundImageOpacity;
     editorBackgroundImageSize.value = DEFAULT_SETTINGS.editorBackgroundImageSize;
     gridFontFamily.value = DEFAULT_SETTINGS.gridFontFamily;
+    gridFontSize.value = DEFAULT_SETTINGS.gridFontSize;
     erTheme.value = DEFAULT_SETTINGS.erTheme;
     hiddenTableRules.value = [];
   }
@@ -379,6 +425,8 @@ export const useSettingsStore = defineStore('settings', () => {
     setSurfaceColor,
     setGlobalFontFamily,
     setLocale,
+    uiFontSize,
+    setUiFontSize,
     editorFontSize,
     editorFontFamily,
     editorWordWrap,
@@ -398,6 +446,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setEditorBackgroundImageOpacity,
     setEditorBackgroundImageSize,
     gridFontFamily,
+    gridFontSize,
     erTheme,
     hiddenTableRules,
     addFilterRule,

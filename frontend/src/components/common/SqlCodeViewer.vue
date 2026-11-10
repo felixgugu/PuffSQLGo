@@ -35,7 +35,7 @@ onMounted(() => {
     readOnly: props.readOnly,
     domReadOnly: props.readOnly,
     automaticLayout: true,
-    fontSize: settingsStore.editorFontSize || 12,
+    fontSize: settingsStore.editorFontSize || 14,
     fontFamily: settingsStore.editorFontFamily || 'Consolas, monospace',
     fontLigatures: true,
     lineNumbers: 'on',

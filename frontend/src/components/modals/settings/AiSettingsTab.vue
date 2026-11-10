@@ -60,7 +60,7 @@
           :is="testResult.success ? CircleCheck : TriangleAlert"
           class="w-3.5 h-3.5 flex-shrink-0"
         />
-        <span class="flex-1 font-mono text-[11px]">{{ testResult.message }}</span>
+        <span class="flex-1 font-mono text-xxs">{{ testResult.message }}</span>
       </div>
     </div>
 
@@ -140,7 +140,7 @@
             <div class="text-xs font-semibold text-plan font-sans">
               {{ item.label }}
             </div>
-            <p class="text-[11px] text-dark-300 leading-relaxed break-words font-sans m-0">
+            <p class="text-xxs text-dark-300 leading-relaxed break-words font-sans m-0">
               {{ item.prompt }}
             </p>
           </div>

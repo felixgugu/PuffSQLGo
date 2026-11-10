@@ -101,7 +101,7 @@ function onKeydown(event: KeyboardEvent) {
   background: transparent;
   color: rgb(var(--color-dark-400));
   font-family: var(--app-font-sans);
-  font-size: 11px;
+  font-size: var(--app-font-size-secondary);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;

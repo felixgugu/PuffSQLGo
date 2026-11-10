@@ -8,7 +8,7 @@ import { type SqlEditorTab } from '../src/types/workspace';
 import { generateBatchUpdateScript, type RowModification } from '../src/utils/batchUpdateGenerator';
 import { buildWhereConditions, formatSqlLiteral, formatTableName, generateDeleteStatement, generateInsertStatement, generateUpdateStatement } from '../src/utils/sqlGenerator';
 import { checkTableEditability } from '../src/utils/tableEditability';
-import { generateTableSelectSql } from '../src/utils/tableSelectSql';
+import { generateColumnSelectSql, generateTableSelectSql } from '../src/utils/tableSelectSql';
 
 describe('dml', () => {
 const columns = [{ name: 'tenant', isPrimaryKey: true }, { name: 'id', isPrimaryKey: true }, { name: 'value' }];
@@ -306,6 +306,23 @@ test('generateTableSelectSql leaves identifiers bare unless brackets are require
     generateTableSelectSql('  ', 'Plain'),
     'SELECT * FROM Plain;\n'
   );
+});
+
+test('generateColumnSelectSql projects one column from its owning table', () => {
+  assert.equal(
+    generateColumnSelectSql('dbo', 'Orders', 'OrderId'),
+    'SELECT OrderId FROM dbo.Orders;\n'
+  );
+  assert.equal(
+    generateColumnSelectSql('sales', 'Order Details', 'Line Total'),
+    'SELECT [Line Total] FROM sales.[Order Details];\n'
+  );
+  // Same identifier rules as the table helper: a bare schema/table stays bare.
+  assert.equal(
+    generateColumnSelectSql('  ', 'Plain', 'Id'),
+    'SELECT Id FROM Plain;\n'
+  );
+  assert.equal(generateColumnSelectSql('dbo', 'Order', 'Key'), 'SELECT [Key] FROM dbo.[Order];\n');
 });
 
 test('dropping table on tab bar opens a new SQL tab with SELECT statement', () => {

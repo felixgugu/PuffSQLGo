@@ -225,6 +225,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  /** Repoints every tab that was using a database which no longer exists. */
+  function retargetDatabase(connId: string, oldDatabase: string, newDatabase: string) {
+    if (!newDatabase || oldDatabase === newDatabase) return;
+    for (const tab of tabs.value) {
+      if (tab.connectionId === connId && tab.database === oldDatabase) {
+        tab.database = newDatabase;
+      }
+    }
+  }
+
   function markTabSaved(tabId: string, newTitle?: string) {
     const tab = tabs.value.find((t) => t.id === tabId);
     if (tab) {
@@ -797,6 +807,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ensureActiveTabConnection,
     updateActiveTabConnection,
     updateActiveTabDatabase,
+    retargetDatabase,
     markTabSaved,
     addSqlTab,
     openSqlFileTab,

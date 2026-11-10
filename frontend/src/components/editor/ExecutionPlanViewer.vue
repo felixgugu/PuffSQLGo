@@ -194,7 +194,7 @@
             <AlertTriangle class="w-6 h-6" />
           </div>
           <div class="max-w-md">
-            <h4 class="font-semibold text-dark-100 text-sm mb-1">圖形渲染失敗</h4>
+            <h4 class="font-semibold text-dark-100 text-base mb-1">圖形渲染失敗</h4>
             <p class="text-dark-400 text-xxs font-mono break-all mb-3">{{ renderError }}</p>
             <SqButton
               type="button"

@@ -28,7 +28,7 @@ func TestExecuteStreamsMultipleSetsAndAppliesRowLimit(t *testing.T) {
 	maxRows := 1
 	result := server.Execute(context.Background(), nil, "SELECT 1", &maxRows, nil, func(spid int) {
 		observedSPID = spid
-	})
+	}, nil)
 	if observedSPID != 77 {
 		t.Fatalf("SPID callback = %d, want 77", observedSPID)
 	}
@@ -61,7 +61,7 @@ func TestExecuteReportsCancellationWithoutThrowingAwayPartialResult(t *testing.T
 	mock.ExpectExec("USE \\[master\\]").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("SELECT 1").WillReturnError(context.Canceled)
 
-	result := server.Execute(context.Background(), nil, "SELECT 1", nil, nil, nil)
+	result := server.Execute(context.Background(), nil, "SELECT 1", nil, nil, nil, nil)
 	if len(result.Messages) != 1 || result.Messages[0].Level != "warning" {
 		t.Fatalf("cancellation produced %#v", result.Messages)
 	}
@@ -80,12 +80,81 @@ func TestExecuteReportsDriverFailureAsQueryMessage(t *testing.T) {
 	mock.ExpectQuery("SELECT @@SPID").WillReturnRows(sqlmock.NewRows([]string{"spid"}).AddRow(21))
 	mock.ExpectQuery("BROKEN").WillReturnError(errors.New("synthetic SQL failure"))
 
-	result := server.Execute(context.Background(), nil, "BROKEN", nil, nil, nil)
+	result := server.Execute(context.Background(), nil, "BROKEN", nil, nil, nil, nil)
 	if len(result.Messages) != 1 || result.Messages[0].Level != "error" {
 		t.Fatalf("failure produced %#v", result.Messages)
 	}
 	if result.Messages[0].LineNumber == nil || *result.Messages[0].LineNumber != 1 {
 		t.Fatalf("script line number was not preserved: %#v", result.Messages[0])
+	}
+}
+
+func TestExecuteDropsDatabaseFromMasterContext(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := &Server{DB: db, database: "OldDb"}
+	mock.ExpectQuery("SELECT @@SPID").WillReturnRows(sqlmock.NewRows([]string{"spid"}).AddRow(41))
+	mock.ExpectExec("USE \\[OldDb\\]").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("USE master").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("DROP DATABASE \\[OldDb\\]").WillReturnRows(sqlmock.NewRows(nil))
+	mock.ExpectQuery("SELECT 1").WillReturnRows(sqlmock.NewRows([]string{"One"}).AddRow(1))
+
+	var phases []string
+	result := server.Execute(
+		context.Background(), nil,
+		"DROP DATABASE [OldDb];\nGO\nUSE [Other];\nSELECT 1;",
+		nil, nil, nil,
+		func(name string) { phases = append(phases, name) },
+	)
+	if len(result.Messages) == 0 || result.Messages[0].Level == "error" {
+		t.Fatalf("drop produced errors: %#v", result.Messages)
+	}
+	if server.Database() != "Other" {
+		t.Fatalf("database after batches = %q, want Other", server.Database())
+	}
+	found := false
+	for _, name := range phases {
+		if name == "drop_database" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("drop phase was not reported: %#v", phases)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecuteDropsAlreadyMissingDatabaseThroughMaster(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server := &Server{DB: db, database: "OldDb"}
+	mock.ExpectQuery("SELECT @@SPID").WillReturnRows(sqlmock.NewRows([]string{"spid"}).AddRow(42))
+	mock.ExpectExec("USE \\[OldDb\\]").WillReturnError(errors.New("database does not exist"))
+	mock.ExpectExec("USE master").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("USE master").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("DROP DATABASE IF EXISTS \\[OldDb\\]").WillReturnRows(sqlmock.NewRows(nil))
+
+	result := server.Execute(
+		context.Background(), nil,
+		"DROP DATABASE IF EXISTS [OldDb];",
+		nil, nil, nil, nil,
+	)
+	if len(result.Messages) == 0 || result.Messages[0].Level == "error" {
+		t.Fatalf("missing-database drop produced errors: %#v", result.Messages)
+	}
+	if server.Database() != "master" {
+		t.Fatalf("database after fallback = %q, want master", server.Database())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -108,8 +177,53 @@ func TestNormalizeValueKeepsDateTimeOffsetZone(t *testing.T) {
 	if value := normalizeValue(stamp, "DATETIMEOFFSET"); value != "2026-09-21 08:30:00 +08:00" {
 		t.Fatalf("datetimeoffset = %#v", value)
 	}
+	if value := normalizeValue(stamp, "datetimeoffset(3)"); value != "2026-09-21 08:30:00 +08:00" {
+		t.Fatalf("datetimeoffset(3) = %#v", value)
+	}
+	if value := normalizeValue(stamp.UTC(), "DATETIMEOFFSET"); value != "2026-09-21 00:30:00 +00:00" {
+		t.Fatalf("datetimeoffset UTC = %#v", value)
+	}
 	if value := normalizeValue(stamp, "datetime2"); value != "2026-09-21 08:30:00" {
 		t.Fatalf("datetime2 = %#v", value)
+	}
+}
+
+func TestReadResultSetPreservesDateTimeOffsetZone(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	taipei := time.FixedZone("", 8*60*60)
+	stamp := time.Date(2026, 11, 5, 10, 0, 0, 0, taipei)
+	rows := sqlmock.NewRowsWithColumnDefinition(
+		sqlmock.NewColumn("Plus8").OfType("DATETIMEOFFSET", time.Time{}).Nullable(true),
+		sqlmock.NewColumn("Plain").OfType("DATETIME2", time.Time{}).Nullable(true),
+	).AddRow(stamp, stamp)
+	mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+	sqlRows, err := db.Query("SELECT Plus8, Plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlRows.Close()
+	names, err := sqlRows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := readResultSet(sqlRows, names, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Columns[0].DataType != "DATETIMEOFFSET" {
+		t.Fatalf("column type = %q", set.Columns[0].DataType)
+	}
+	if got := set.Rows[0][0]; got != "2026-11-05 10:00:00 +08:00" {
+		t.Fatalf("datetimeoffset cell = %#v", got)
+	}
+	if got := set.Rows[0][1]; got != "2026-11-05 10:00:00" {
+		t.Fatalf("datetime2 cell = %#v", got)
 	}
 }
 

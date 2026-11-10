@@ -57,6 +57,50 @@ describe('table objects in the Explorer', () => {
     assert.doesNotMatch(source, /schemaService\.getColumns\(/, 'the columns-only call is no longer the tree path');
   });
 
+  test('refreshing a database invalidates the cached table objects and re-fetches open nodes', () => {
+    const source = readSource(sidebar);
+
+    assert.match(source, /function invalidateTableObjects\(/, 'the cache can be dropped');
+    assert.match(source, /let tableObjectEpoch = 0/, 'in-flight requests are guarded by an epoch');
+    assert.match(
+      source,
+      /if \(epoch === tableObjectEpoch\) \{\s*tableObjects\[key\] = objects;/,
+      'a stale response must not repopulate the cache'
+    );
+    assert.match(
+      source,
+      /async function reloadExpandedTableObjects\(/,
+      'open nodes are refreshed instead of waiting for a collapse'
+    );
+    assert.match(source, /invalidateTableObjects\(connId, db\);/);
+    assert.match(source, /await reloadExpandedTableObjects\(connId, db\);/);
+    assert.match(
+      source,
+      /schemaStore\.loadDatabaseSchema\(connId, db, force\)/,
+      'force refresh also reloads the column/autocomplete schema'
+    );
+  });
+
+  test('the Explorer search matches column names and reveals the owning nodes', () => {
+    const source = readSource(sidebar);
+
+    assert.match(source, /buildExplorerFilterIndex\(/);
+    assert.match(source, /function getVisibleColumns\(/);
+    assert.match(source, /filterIndex\.value\.tables/);
+    assert.match(source, /function isConnectionExpanded\(/);
+    assert.match(source, /function isDatabaseExpanded\(/);
+    assert.match(
+      source,
+      /getVisibleColumns\(conn\.id, db, table\.schema, table\.name\)/,
+      'table columns follow the search'
+    );
+    assert.match(
+      source,
+      /getVisibleColumns\(conn\.id, db, view\.schema, view\.name\)/,
+      'view columns follow the search'
+    );
+  });
+
   test('the generated script is handed the constraints, indexes and triggers', () => {
     const source = readSource(sidebar);
     const ddlCall = source.slice(source.indexOf('const ddl = generateCreateTableDdl('));
@@ -190,6 +234,14 @@ test('parseSearchQuery correctly detects type prefix shortcuts', () => {
   assert.equal(f1.cleanQuery, 'fn_CalculateTax');
   assert.equal(f1.explicitTypeFilter, 'function');
 
+  const c1 = parseSearchQuery('c: OrderId');
+  assert.equal(c1.cleanQuery, 'OrderId');
+  assert.equal(c1.explicitTypeFilter, 'column');
+
+  const c2 = parseSearchQuery('column: CreatedAt');
+  assert.equal(c2.cleanQuery, 'CreatedAt');
+  assert.equal(c2.explicitTypeFilter, 'column');
+
   const normal = parseSearchQuery('Customers');
   assert.equal(normal.cleanQuery, 'Customers');
   assert.equal(normal.explicitTypeFilter, undefined);
@@ -255,5 +307,85 @@ test('schemaStore aggregates tables, views, procedures, and functions into Quick
 
   const funcObj = objects.find((o) => o.name === 'fn_GetDiscount');
   assert.equal(funcObj?.type, 'function');
+});
+
+test('schemaStore exposes cached columns as column items with their owning table', () => {
+  const schemaStore = useSchemaStore();
+  const connStore = useConnectionStore();
+
+  connStore.activeConnectionId = 'test-conn';
+  connStore.activeDatabase = 'Northwind';
+
+  const dbKey = 'test-conn:Northwind';
+  schemaStore.tablesByDb[dbKey] = [
+    { schema: 'dbo', name: 'Customers', kind: 'BASE TABLE' },
+  ];
+  schemaStore.routinesByDb[dbKey] = [];
+  schemaStore.schemasByDb[dbKey] = [
+    {
+      schema: 'dbo',
+      name: 'Customers',
+      kind: 'BASE TABLE',
+      columns: [
+        {
+          name: 'CustomerId',
+          dataType: 'int',
+          isNullable: false,
+          isPrimaryKey: true,
+          isIdentity: true,
+        },
+        {
+          name: 'CompanyName',
+          dataType: 'nvarchar',
+          isNullable: true,
+          isPrimaryKey: false,
+          isIdentity: false,
+        },
+      ],
+    },
+  ];
+
+  const objects = schemaStore.getDatabaseObjects('test-conn', 'Northwind');
+  const columns = objects.filter((o) => o.type === 'column');
+
+  assert.equal(columns.length, 2);
+  const company = columns.find((o) => o.name === 'CompanyName');
+  assert.equal(company?.table, 'Customers');
+  assert.equal(company?.id, 'column:dbo.Customers.CompanyName');
+  assert.equal(company?.database, 'Northwind');
+});
+
+test('column items rank below objects with the same name and honour the c: prefix', () => {
+  const items: QuickFinderItem[] = [
+    { id: 't1', schema: 'dbo', name: 'OrderId', type: 'table', database: 'AppDb', connId: 'c1' },
+    {
+      id: 'col1',
+      schema: 'dbo',
+      name: 'OrderId',
+      type: 'column',
+      table: 'Orders',
+      database: 'AppDb',
+      connId: 'c1',
+    },
+  ];
+
+  const byName = filterAndRankQuickObjects(items, 'OrderId', 'all');
+  assert.equal(byName[0]?.item.type, 'table');
+
+  const columnsOnly = filterAndRankQuickObjects(items, 'c: OrderId', 'all');
+  assert.equal(columnsOnly.length, 1);
+  assert.equal(columnsOnly[0]?.item.type, 'column');
+
+  const byOwner = filterAndRankQuickObjects(items, 'Orders.OrderId', 'all');
+  assert.equal(byOwner[0]?.item.type, 'column');
+  assert.ok((byOwner[0]?.ownerIndices.length ?? 0) > 0, 'the owning table is highlighted');
+
+  // An empty "all" search stays a list of objects; columns appear only on their own tab.
+  const allEmpty = filterAndRankQuickObjects(items, '', 'all');
+  assert.equal(allEmpty.some((entry) => entry.item.type === 'column'), false);
+
+  const columnTab = filterAndRankQuickObjects(items, '', 'column');
+  assert.equal(columnTab.length, 1);
+  assert.equal(columnTab[0]?.item.type, 'column');
 });
 });

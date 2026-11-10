@@ -32,6 +32,8 @@ export function GetDatabaseSchema(arg1:string,arg2:any):Promise<Array<model.Tabl
 
 export function GetDatabases(arg1:string):Promise<Array<model.DatabaseItem>>;
 
+export function GetErrorLogPath():Promise<string>;
+
 export function GetForeignKeys(arg1:string,arg2:any,arg3:any,arg4:any):Promise<Array<model.ForeignKeyItem>>;
 
 export function GetQueryLogPath():Promise<string>;
@@ -50,9 +52,13 @@ export function LogAIRequest(arg1:string,arg2:any,arg3:string):Promise<void>;
 
 export function LogAIResponse(arg1:string,arg2:string,arg3:any,arg4:any,arg5:any):Promise<void>;
 
+export function LogClientError(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function OpenAILogFile():Promise<string>;
 
 export function OpenCustomTemplatesFile():Promise<string>;
+
+export function OpenErrorLog():Promise<string>;
 
 export function OpenQueryLogFile():Promise<string>;
 

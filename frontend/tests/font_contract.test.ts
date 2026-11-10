@@ -20,8 +20,13 @@ test('all Tabulator grids bind the configurable grid font variable', () => {
     const source = readSource(path);
     assert.match(
       source,
-      /:style="\{ '--sqlight-grid-font': settingsStore\.gridFontFamily \}"/,
+      /'--sqlight-grid-font': settingsStore\.gridFontFamily/,
       `${path} should bind --sqlight-grid-font to gridFontFamily`
+    );
+    assert.match(
+      source,
+      /'--sqlight-grid-font-size': `\$\{settingsStore\.gridFontSize\}px`/,
+      `${path} should bind --sqlight-grid-font-size to gridFontSize`
     );
     assert.doesNotMatch(
       source,
@@ -221,7 +226,7 @@ test('the grid font only wraps the Tabulator table itself', () => {
   for (const { path } of tableGrids) {
     assert.match(
       readSource(path),
-      /class="sqlight-grid[^"]*"[\s\S]{0,200}?:style="\{ '--sqlight-grid-font': settingsStore\.gridFontFamily \}"/,
+      /class="sqlight-grid[^"]*"[\s\S]{0,260}?:style="\{[\s\S]{0,160}?'--sqlight-grid-font': settingsStore\.gridFontFamily/,
       `${path} must bind the grid font on the .sqlight-grid wrapper`
     );
   }
@@ -281,4 +286,64 @@ describe('Font family picker utilities', () => {
     }
   });
 });
+});
+
+describe('unified_type_scale', () => {
+  test('the rem tokens define heading 16 / primary 14 / secondary 13 / caption 12', () => {
+    const css = readSource('src/assets/main.css');
+    assert.match(css, /--app-font-size-primary: 0\.875rem;/);
+    assert.match(
+      css,
+      /--app-font-size-heading: calc\(var\(--app-font-size-primary\) \+ 0\.125rem\);/
+    );
+    assert.match(
+      css,
+      /--app-font-size-secondary: calc\(var\(--app-font-size-primary\) - 0\.0625rem\);/
+    );
+    assert.match(
+      css,
+      /--app-font-size-caption: calc\(var\(--app-font-size-primary\) - 0\.125rem\);/
+    );
+  });
+
+  test('Tailwind maps the four UI text steps to the tokens', () => {
+    const config = readSource('tailwind.config.js');
+    assert.match(config, /'xxs': \['var\(--app-font-size-caption\)'/);
+    assert.match(config, /'xs': \['var\(--app-font-size-secondary\)'/);
+    assert.match(config, /'sm': \['var\(--app-font-size-primary\)'/);
+    assert.match(config, /'base': \['var\(--app-font-size-heading\)'/);
+  });
+
+  test('the appearance setting writes the primary token', () => {
+    const theme = readSource('src/services/themeManager.ts');
+    assert.match(theme, /--app-font-size-primary/);
+    assert.match(theme, /applyUiFontSize/);
+    assert.match(theme, /this\.applyUiFontSize\(settings\.uiFontSize \|\| 14\)/);
+  });
+
+  test('font size defaults follow the new baseline and migrate the old editor size', () => {
+    const store = readSource('src/stores/settingsStore.ts');
+    assert.match(store, /export const DEFAULT_UI_FONT_SIZE = 14;/);
+    assert.match(store, /export const DEFAULT_EDITOR_FONT_SIZE = 14;/);
+    assert.match(store, /export const DEFAULT_GRID_FONT_SIZE = 13;/);
+    assert.match(
+      store,
+      /if \(migrated\.uiFontSize === undefined && migrated\.editorFontSize === 13\)/
+    );
+  });
+
+  test('the settings modal exposes both the UI and grid font size controls', () => {
+    const modal = readSource('src/components/modals/SettingsModal.vue');
+    assert.match(modal, /settingsStore\.uiFontSize/);
+    assert.match(modal, /settingsStore\.setUiFontSize/);
+    assert.match(modal, /settingsStore\.gridFontSize/);
+    assert.match(modal, /'settingsModal\.uiFontSizeDesc'/);
+    assert.match(modal, /'settingsModal\.gridFontSize'/);
+  });
+
+  test('the grid theme consumes the configured font size', () => {
+    const css = readSource('src/styles/tabulatorTheme.css');
+    assert.match(css, /font-size: var\(--sqlight-grid-font-size, 0\.8125rem\);/);
+    assert.doesNotMatch(css, /\.tabulator \{[\s\S]{0,400}?font-size: 12px;/);
+  });
 });

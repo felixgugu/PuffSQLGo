@@ -82,7 +82,7 @@ const SEVERITY_ICONS: Record<ToastSeverity, Component> = {
   background-color: rgb(var(--color-raised));
   box-shadow: var(--shadow-raised);
   color: rgb(var(--color-dark-200));
-  font-size: 12px;
+  font-size: var(--app-font-size-secondary);
   line-height: 1.35;
   overflow: hidden;
 }

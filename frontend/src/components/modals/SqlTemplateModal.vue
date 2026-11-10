@@ -16,7 +16,7 @@
     <div class="sq-dialog-drag-handle p-3.5 border-b border-dark-700 bg-dark-900 flex flex-col space-y-2.5 flex-shrink-0">
       <div class="flex items-center space-x-2.5">
         <Book class="w-4 h-4 text-warn flex-shrink-0" />
-        <span class="text-sm font-semibold text-dark-100 flex items-center space-x-2">
+        <span class="text-base font-semibold text-dark-100 flex items-center space-x-2">
           <span>{{ $t('sqlTemplates.title') }}</span>
           <SqChip :label="templateStore.allTemplates.length" tone="neutral" class="font-mono" />
         </span>
@@ -224,7 +224,7 @@
                   :label="$t('sqlTemplates.externalCustomDoc')"
                 />
               </div>
-              <h3 class="text-sm font-semibold text-dark-100 truncate">
+              <h3 class="text-base font-semibold text-dark-100 truncate">
                 {{ templateStore.selectedTemplate.title }}
               </h3>
             </div>

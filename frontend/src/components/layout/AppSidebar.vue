@@ -189,7 +189,7 @@
             :title="$t('sidebar.expandCollapse')"
           >
             <component
-              :is="expandedConns[conn.id] ? ChevronDown : ChevronRight"
+              :is="isConnectionExpanded(conn.id) ? ChevronDown : ChevronRight"
               class="w-3 h-3"
             />
           </button>
@@ -244,7 +244,7 @@
         </div>
 
         <!-- Connection Children: Databases -->
-        <div v-if="expandedConns[conn.id]" class="pl-3.5 mt-1 space-y-0.5 border-l border-dark-750 ml-2">
+        <div v-if="isConnectionExpanded(conn.id)" class="pl-3.5 mt-1 space-y-0.5 border-l border-dark-750 ml-2">
           <div
             v-for="db in getFilteredDatabases(conn.id)"
             :key="db"
@@ -270,7 +270,7 @@
                 :title="$t('sidebar.expandCollapse')"
               >
                 <component
-                  :is="expandedDbs[`${conn.id}:${db}`] ? ChevronDown : ChevronRight"
+                  :is="isDatabaseExpanded(conn.id, db) ? ChevronDown : ChevronRight"
                   class="w-2.5 h-2.5"
                 />
               </button>
@@ -287,7 +287,7 @@
             </div>
 
             <!-- Database Categories & Object Tree -->
-            <div v-if="expandedDbs[`${conn.id}:${db}`]" class="pl-3.5 border-l border-dark-750 ml-2 space-y-1">
+            <div v-if="isDatabaseExpanded(conn.id, db)" class="pl-3.5 border-l border-dark-750 ml-2 space-y-1">
               <!-- Loading state -->
               <div
                 v-if="loadingTablesByDb[`${conn.id}:${db}`] || schemaStore.loadingRoutinesByDb[`${conn.id}:${db}`]"
@@ -380,7 +380,7 @@
                         </div>
 
                         <div
-                          v-else-if="getTableColumns(conn.id, db, table.schema, table.name).length === 0"
+                          v-else-if="getVisibleColumns(conn.id, db, table.schema, table.name).length === 0"
                           class="py-0.5 px-1 text-xxs text-dark-500 italic"
                         >
                           {{ $t('sidebar.noColumns') }}
@@ -388,7 +388,7 @@
 
                         <div
                           v-else
-                          v-for="col in getTableColumns(conn.id, db, table.schema, table.name)"
+                          v-for="col in getVisibleColumns(conn.id, db, table.schema, table.name)"
                           :key="col.name"
                           @dblclick.stop="handleColumnDoubleClick(col)"
                           @contextmenu.prevent="openColumnContextMenu($event, col, conn.id, db, table.schema, table.name, true)"
@@ -525,7 +525,7 @@
                         </div>
 
                         <div
-                          v-else-if="getTableColumns(conn.id, db, view.schema, view.name).length === 0"
+                          v-else-if="getVisibleColumns(conn.id, db, view.schema, view.name).length === 0"
                           class="py-0.5 px-1 text-xxs text-dark-500 italic"
                         >
                           {{ $t('sidebar.noColumns') }}
@@ -533,7 +533,7 @@
 
                         <div
                           v-else
-                          v-for="col in getTableColumns(conn.id, db, view.schema, view.name)"
+                          v-for="col in getVisibleColumns(conn.id, db, view.schema, view.name)"
                           :key="col.name"
                           @dblclick.stop="handleColumnDoubleClick(col)"
                           @contextmenu.prevent="openColumnContextMenu($event, col, conn.id, db, view.schema, view.name, false)"
@@ -863,6 +863,12 @@ import {
 } from '@/utils/objectScriptGenerator';
 import { generateTableSelectSql } from '@/utils/tableSelectSql';
 import { collapseAllTreeNodes } from '@/utils/explorerTreeState';
+import {
+  buildExplorerFilterIndex,
+  explorerDatabaseKey,
+  explorerRoutineKey,
+  explorerTableKey,
+} from '@/utils/explorerFilter';
 import { useExplorerNodeCopy } from '@/composables/useExplorerNodeCopy';
 import {
   loadFilterHistory,
@@ -1138,11 +1144,41 @@ const expandedTables = reactive<Record<string, boolean>>({});
 const tableObjects = reactive<Record<string, TableObjects>>({});
 /** De-duplicates repeated expansion/location clicks for the same table while metadata is loading. */
 const tableObjectLoads = new Map<string, Promise<TableObjects>>();
+/**
+ * Identifies what each cached table-objects entry belongs to, so a refresh can re-fetch exactly the
+ * nodes that are still expanded without parsing the cache key back apart.
+ */
+const tableObjectSources = new Map<
+  string,
+  { connId: string; db: string; schema: string; tableName: string }
+>();
+/** Bumped on every invalidation so a request started before the refresh cannot repopulate the cache. */
+let tableObjectEpoch = 0;
 const tablesByDb = schemaStore.tablesByDb;
 const loadingTablesByDb = schemaStore.loadingTablesByDb;
 const loadingColumns = reactive<Record<string, boolean>>({});
 const activeLocatedKey = ref<string | null>(null);
 let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * One pass over the loaded metadata answers every filter question in the tree: which databases
+ * remain, which nodes to auto-expand, and which columns matched inside a table.
+ */
+const filterIndex = computed(() =>
+  buildExplorerFilterIndex({
+    query: filterQuery.value,
+    connections: connectionStore.connections.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      databases: connectionStore.getDatabases(connection.id),
+    })),
+    tablesByDb,
+    routinesByDb: schemaStore.routinesByDb,
+    schemasByDb: schemaStore.schemasByDb,
+    isDatabaseHidden: (name) => settingsStore.isDatabaseHidden(name),
+    isTableHidden: (name, schema) => settingsStore.isTableHidden(name, schema),
+  })
+);
 
 function handleLocateCurrentTable() {
   emit('request-locate-table');
@@ -1187,19 +1223,34 @@ function isFolderExpanded(connId: string, db: string, folder: 'tables' | 'views'
   return !!expandedFolders[key];
 }
 
+/** While searching, reveal the connections that contain a hit without touching the saved state. */
+function isConnectionExpanded(connId: string): boolean {
+  return !!expandedConns[connId] || filterIndex.value.expandConnections.has(connId);
+}
+
+/** While searching, reveal the databases that contain a matching object. */
+function isDatabaseExpanded(connId: string, db: string): boolean {
+  return (
+    !!expandedDbs[`${connId}:${db}`] ||
+    filterIndex.value.expandDatabases.has(explorerDatabaseKey(connId, db))
+  );
+}
+
 function toggleFolder(connId: string, db: string, folder: 'tables' | 'views' | 'procs' | 'funcs') {
   const key = `${connId}:${db}:${folder}`;
   expandedFolders[key] = !isFolderExpanded(connId, db, folder);
 }
 
 function getFilteredDatabases(connId: string): string[] {
-  const dbs = connectionStore.getDatabases(connId);
-  return dbs.filter((db) => {
+  const dbs = connectionStore.getDatabases(connId).filter((db) => {
     if (connectionStore.activeConnectionId === connId && connectionStore.activeDatabase === db) {
       return true;
     }
     return !settingsStore.isDatabaseHidden(db);
   });
+  const index = filterIndex.value;
+  if (!index.active) return dbs;
+  return dbs.filter((db) => index.databases.has(explorerDatabaseKey(connId, db)));
 }
 
 function getFilteredTables(connId: string, db: string): TableItem[] {
@@ -1207,41 +1258,33 @@ function getFilteredTables(connId: string, db: string): TableItem[] {
   const list = (tablesByDb[key] || []).filter(
     (t) => t.kind === 'BASE TABLE' && !settingsStore.isTableHidden(t.name, t.schema)
   );
-  const q = filterQuery.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (t) => t.name.toLowerCase().includes(q) || t.schema.toLowerCase().includes(q)
-  );
+  const index = filterIndex.value;
+  if (!index.active) return list;
+  return list.filter((t) => index.tables.has(explorerTableKey(connId, db, t.schema, t.name)));
 }
 
 function getFilteredViews(connId: string, db: string): TableItem[] {
   const key = `${connId}:${db}`;
   const list = (tablesByDb[key] || []).filter((t) => t.kind === 'VIEW');
-  const q = filterQuery.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (t) => t.name.toLowerCase().includes(q) || t.schema.toLowerCase().includes(q)
-  );
+  const index = filterIndex.value;
+  if (!index.active) return list;
+  return list.filter((t) => index.tables.has(explorerTableKey(connId, db, t.schema, t.name)));
 }
 
 function getFilteredProcedures(connId: string, db: string): RoutineItem[] {
   const key = `${connId}:${db}`;
   const list = (schemaStore.routinesByDb[key] || []).filter((r) => r.kind === 'PROCEDURE');
-  const q = filterQuery.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (r) => r.name.toLowerCase().includes(q) || r.schema.toLowerCase().includes(q)
-  );
+  const index = filterIndex.value;
+  if (!index.active) return list;
+  return list.filter((r) => index.procedures.has(explorerRoutineKey(connId, db, r.schema, r.name)));
 }
 
 function getFilteredFunctions(connId: string, db: string): RoutineItem[] {
   const key = `${connId}:${db}`;
   const list = (schemaStore.routinesByDb[key] || []).filter((r) => r.kind === 'FUNCTION');
-  const q = filterQuery.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (r) => r.name.toLowerCase().includes(q) || r.schema.toLowerCase().includes(q)
-  );
+  const index = filterIndex.value;
+  if (!index.active) return list;
+  return list.filter((r) => index.functions.has(explorerRoutineKey(connId, db, r.schema, r.name)));
 }
 
 
@@ -1322,10 +1365,17 @@ async function loadDatabaseTables(connId: string, db: string, force = false) {
   try {
     // Ensure backend session exists without mutating frontend activeConnectionId or activeDatabase
     await connectionService.connect(connId);
+    // The schema (columns) is loaded alongside the object lists so autocomplete and the Explorer's
+    // column search see the same snapshot, and `force` refreshes all three together.
     await Promise.all([
+      schemaStore.loadDatabaseSchema(connId, db, force),
       schemaStore.loadDatabaseTables(connId, db, force),
       schemaStore.loadDatabaseRoutines(connId, db, force),
     ]);
+    if (force) {
+      invalidateTableObjects(connId, db);
+      await reloadExpandedTableObjects(connId, db);
+    }
   } catch (err: unknown) {
     console.error(`Failed to load tables for ${connId}:${db}:`, err);
     alert(`載入資料庫 [${db}] 的物件失敗: ${err instanceof Error ? err.message : String(err)}`);
@@ -1336,10 +1386,23 @@ async function refreshCurrent() {
   isRefreshing.value = true;
   try {
     await connectionStore.refreshDatabases();
-    if (connectionStore.activeConnectionId && connectionStore.activeDatabase) {
-      schemaStore.loadDatabaseSchema(connectionStore.activeConnectionId, connectionStore.activeDatabase, true).catch(() => {});
-      schemaStore.loadDatabaseRoutines(connectionStore.activeConnectionId, connectionStore.activeDatabase, true).catch(() => {});
-      await loadDatabaseTables(connectionStore.activeConnectionId, connectionStore.activeDatabase, true);
+    const connId = connectionStore.activeConnectionId;
+    if (!connId || connectionStore.status !== 'connected') return;
+
+    // The header refresh owns the whole Explorer: every database the user has open on this
+    // connection is reloaded, not only the one currently selected in the header.
+    const targets = connectionStore
+      .getDatabases(connId)
+      .filter(
+        (db) =>
+          expandedDbs[`${connId}:${db}`] ||
+          filterIndex.value.expandDatabases.has(explorerDatabaseKey(connId, db))
+      );
+    const activeDb = connectionStore.activeDatabase;
+    if (activeDb && !targets.includes(activeDb)) targets.push(activeDb);
+
+    for (const db of targets) {
+      await loadDatabaseTables(connId, db, true);
     }
   } catch (err: unknown) {
     console.error('Refresh current failed:', err);
@@ -1363,10 +1426,10 @@ async function handleRefreshConn(conn: ConnectionProfile) {
     // Refresh all currently expanded databases for this connection
     const dbs = connectionStore.getDatabases(conn.id);
     for (const db of dbs) {
-      const dbKey = `${conn.id}:${db}`;
-      if (expandedDbs[dbKey]) {
-        schemaStore.loadDatabaseSchema(conn.id, db, true).catch(() => {});
-        schemaStore.loadDatabaseRoutines(conn.id, db, true).catch(() => {});
+      if (
+        expandedDbs[`${conn.id}:${db}`] ||
+        filterIndex.value.expandDatabases.has(explorerDatabaseKey(conn.id, db))
+      ) {
         await loadDatabaseTables(conn.id, db, true);
       }
     }
@@ -1410,11 +1473,15 @@ async function toggleDatabaseExpand(connId: string, db: string) {
 }
 
 function tableKey(connId: string, db: string, schema: string, tableName: string) {
-  return `${connId}:${db}:${schema}.${tableName}`;
+  return explorerTableKey(connId, db, schema, tableName);
 }
 
 function isTableExpanded(connId: string, db: string, schema: string, tableName: string) {
-  return !!expandedTables[tableKey(connId, db, schema, tableName)];
+  const key = tableKey(connId, db, schema, tableName);
+  if (expandedTables[key]) return true;
+  // A column hit reveals its parent table so the match is visible without another click.
+  const match = filterIndex.value.tables.get(key);
+  return !!match && match.columns.size > 0;
 }
 
 async function toggleTable(connId: string, db: string, schema: string, tableName: string) {
@@ -1424,7 +1491,7 @@ async function toggleTable(connId: string, db: string, schema: string, tableName
   if (expandedTables[key] && !tableObjects[key]) {
     loadingColumns[key] = true;
     try {
-      tableObjects[key] = await loadTableObjects(connId, db, schema, tableName);
+      await loadTableObjects(connId, db, schema, tableName);
     } catch (err: unknown) {
       console.error('Failed to load table objects:', err);
       alert(`載入物件失敗: ${err instanceof Error ? err.message : String(err)}`);
@@ -1439,22 +1506,91 @@ function loadTableObjects(
   connId: string,
   db: string,
   schema: string,
-  tableName: string
+  tableName: string,
+  force = false
 ): Promise<TableObjects> {
   const key = tableKey(connId, db, schema, tableName);
+
+  if (force) {
+    delete tableObjects[key];
+    tableObjectLoads.delete(key);
+  }
+
   const cached = tableObjects[key];
   if (cached) return Promise.resolve(cached);
   const pending = tableObjectLoads.get(key);
   if (pending) return pending;
 
-  const request = schemaService.getTableObjects(connId, schema, tableName, db).then((objects) => {
-    tableObjects[key] = objects;
-    return objects;
-  }).finally(() => {
-    tableObjectLoads.delete(key);
-  });
-  tableObjectLoads.set(key, request);
-  return request;
+  const epoch = tableObjectEpoch;
+  tableObjectSources.set(key, { connId, db, schema, tableName });
+
+  let tracked: Promise<TableObjects>;
+  tracked = schemaService
+    .getTableObjects(connId, schema, tableName, db)
+    .then((objects) => {
+      // A refresh invalidated this request while it was in flight; never write the stale snapshot
+      // back into the cache.
+      if (epoch === tableObjectEpoch) {
+        tableObjects[key] = objects;
+      }
+      return objects;
+    })
+    .finally(() => {
+      if (tableObjectLoads.get(key) === tracked) {
+        tableObjectLoads.delete(key);
+      }
+    });
+  tableObjectLoads.set(key, tracked);
+  return tracked;
+}
+
+/**
+ * Drops the cached metadata for one connection (or one database) after an external schema change.
+ * Expanded nodes are re-fetched separately by `reloadExpandedTableObjects`.
+ */
+function invalidateTableObjects(connId: string, db?: string): void {
+  tableObjectEpoch += 1;
+  const prefix = db ? `${connId}:${db}:` : `${connId}:`;
+  for (const key of Object.keys(tableObjects)) {
+    if (key.startsWith(prefix)) delete tableObjects[key];
+  }
+  for (const key of Array.from(tableObjectLoads.keys())) {
+    if (key.startsWith(prefix)) tableObjectLoads.delete(key);
+  }
+}
+
+/** Re-fetches the tables that are currently open so new/removed columns show up immediately. */
+async function reloadExpandedTableObjects(connId: string, db?: string): Promise<void> {
+  const prefix = db ? `${connId}:${db}:` : `${connId}:`;
+  const targets: Array<{
+    key: string;
+    source: { connId: string; db: string; schema: string; tableName: string };
+  }> = [];
+
+  for (const [key, open] of Object.entries(expandedTables)) {
+    if (!open || !key.startsWith(prefix)) continue;
+    const source = tableObjectSources.get(key);
+    if (source) targets.push({ key, source });
+  }
+
+  await Promise.allSettled(
+    targets.map(async ({ key, source }) => {
+      loadingColumns[key] = true;
+      try {
+        await loadTableObjects(
+          source.connId,
+          source.db,
+          source.schema,
+          source.tableName,
+          true
+        );
+      } catch (err) {
+        console.warn(`Failed to reload objects for ${key}:`, err);
+      } finally {
+        loadingColumns[key] = false;
+      }
+    })
+  );
 }
 
 function getTableObjects(connId: string, db: string, schema: string, tableName: string) {
@@ -1463,6 +1599,34 @@ function getTableObjects(connId: string, db: string, schema: string, tableName: 
 
 function getTableColumns(connId: string, db: string, schema: string, tableName: string) {
   return getTableObjects(connId, db, schema, tableName)?.columns ?? [];
+}
+
+/**
+ * What the Explorer should list under a table: normally the cached table objects, but while a
+ * search is active the result comes from the schema snapshot stored in the filter index, so a
+ * column hit can be shown even before the node's own metadata request has finished.
+ */
+function getVisibleColumns(
+  connId: string,
+  db: string,
+  schema: string,
+  tableName: string
+): ColumnItem[] {
+  const index = filterIndex.value;
+  if (!index.active) return getTableColumns(connId, db, schema, tableName);
+
+  const key = tableKey(connId, db, schema, tableName);
+  const match = index.tables.get(key);
+  if (!match) return getTableColumns(connId, db, schema, tableName);
+
+  const schemaColumns = index.schemaColumns.get(key);
+  const columns =
+    schemaColumns && schemaColumns.length > 0
+      ? schemaColumns
+      : getTableColumns(connId, db, schema, tableName);
+
+  if (match.allColumns) return columns;
+  return columns.filter((column) => match.columns.has(column.name.toLowerCase()));
 }
 
 function handleObjectHover(name: string | null) {
@@ -1870,13 +2034,17 @@ async function handleColumnChangeApplied() {
     columnEditor.table
   );
   try {
+    // Drop only this table; the other open nodes keep their snapshot.
+    tableObjectEpoch += 1;
     delete tableObjects[key];
+    tableObjectLoads.delete(key);
     await schemaStore.loadDatabaseSchema(columnEditor.connectionId, columnEditor.database, true);
-    tableObjects[key] = await schemaService.getTableObjects(
+    await loadTableObjects(
       columnEditor.connectionId,
+      columnEditor.database,
       columnEditor.schema,
       columnEditor.table,
-      columnEditor.database
+      true
     );
   } catch (err) {
     console.warn('Schema change succeeded but the Explorer refresh failed:', err);
@@ -1981,7 +2149,6 @@ async function ensureTableObjects(
   if (cached) return cached;
 
   const loaded = await loadTableObjects(connId, database, schema, tableName);
-  tableObjects[key] = loaded;
   return loaded;
 }
 
@@ -2446,11 +2613,20 @@ async function locateTable(options: ExtractedTableIdentifier & { database?: stri
     return;
   }
 
+  const targetKey = tableKey(targetConnId, targetDb, matchedSchema, matchedName);
+  const routineKey = explorerRoutineKey(targetConnId, targetDb, matchedSchema, matchedName);
+
   // If a filter is currently active and hides this matched object, clear the filter
   if (filterQuery.value.trim()) {
-    const q = filterQuery.value.trim().toLowerCase();
-    if (!matchedName.toLowerCase().includes(q) && !matchedSchema.toLowerCase().includes(q)) {
-      filterQuery.value = '';
+    const visibleByFilter =
+      filterIndex.value.tables.has(targetKey) ||
+      filterIndex.value.procedures.has(routineKey) ||
+      filterIndex.value.functions.has(routineKey);
+    if (!visibleByFilter) {
+      const q = filterQuery.value.trim().toLowerCase();
+      if (!matchedName.toLowerCase().includes(q) && !matchedSchema.toLowerCase().includes(q)) {
+        filterQuery.value = '';
+      }
     }
   }
 
@@ -2469,17 +2645,12 @@ async function locateTable(options: ExtractedTableIdentifier & { database?: stri
     expandedFolders[`${targetConnId}:${targetDb}:funcs`] = true;
   }
 
-  const targetKey = tableKey(targetConnId, targetDb, matchedSchema, matchedName);
-
   // If table or view, expand it and load columns if not loaded
   if (matchedType === 'TABLE' || matchedType === 'VIEW') {
     expandedTables[targetKey] = true;
     if (!tableObjects[targetKey]) {
       loadingColumns[targetKey] = true;
       loadTableObjects(targetConnId, targetDb, matchedSchema, matchedName)
-        .then((objects) => {
-          tableObjects[targetKey] = objects;
-        })
         .catch((err) => {
           console.warn('Failed to load objects for located table:', err);
         })

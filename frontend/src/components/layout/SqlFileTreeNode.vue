@@ -72,7 +72,7 @@
         <FileCode class="w-3.5 h-3.5 text-accent flex-shrink-0" />
 
         <!-- File Name -->
-        <span class="truncate flex-1 font-sans text-[11px] group-hover:text-dark-100">
+        <span class="truncate flex-1 font-sans text-xxs group-hover:text-dark-100">
           {{ node.name }}
         </span>
 

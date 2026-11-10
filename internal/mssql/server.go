@@ -14,6 +14,11 @@ import (
 	"puffsql/internal/model"
 )
 
+const (
+	maxIdleConns        = 2
+	dropDatabaseTimeout = 30 * time.Second
+)
+
 // Server owns one SQL Server pool. A database/sql connection is deliberately not pinned here;
 // queries use Conn and a trailing USE statement so they remain on the requested database.
 type Server struct {
@@ -34,7 +39,7 @@ func Open(profile model.ConnectionProfile, password string) (*Server, error) {
 		return nil, fmt.Errorf("open SQL Server: %w", err)
 	}
 	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(2)
+	db.SetMaxIdleConns(maxIdleConns)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	server := &Server{DB: db, Profile: profile, Password: password, database: profile.Database}
 	return server, nil
@@ -53,6 +58,17 @@ func (s *Server) Ping(ctx context.Context) error {
 
 func (s *Server) Close() error {
 	return s.DB.Close()
+}
+
+// pauseIdleConnections drops sessions that database/sql is holding in its idle pool. Those
+// sessions keep their current database, which blocks DROP DATABASE from acquiring exclusive
+// access. The pool remains paused until resumeIdleConnections restores normal retention.
+func (s *Server) pauseIdleConnections() {
+	s.DB.SetMaxIdleConns(0)
+}
+
+func (s *Server) resumeIdleConnections() {
+	s.DB.SetMaxIdleConns(maxIdleConns)
 }
 
 func (s *Server) Database() string {

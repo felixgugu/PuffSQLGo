@@ -62,6 +62,10 @@ export function GetDatabases(arg1) {
   return window['go']['main']['App']['GetDatabases'](arg1);
 }
 
+export function GetErrorLogPath() {
+  return window['go']['main']['App']['GetErrorLogPath']();
+}
+
 export function GetForeignKeys(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetForeignKeys'](arg1, arg2, arg3, arg4);
 }
@@ -98,12 +102,20 @@ export function LogAIResponse(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['LogAIResponse'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function LogClientError(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LogClientError'](arg1, arg2, arg3);
+}
+
 export function OpenAILogFile() {
   return window['go']['main']['App']['OpenAILogFile']();
 }
 
 export function OpenCustomTemplatesFile() {
   return window['go']['main']['App']['OpenCustomTemplatesFile']();
+}
+
+export function OpenErrorLog() {
+  return window['go']['main']['App']['OpenErrorLog']();
 }
 
 export function OpenQueryLogFile() {

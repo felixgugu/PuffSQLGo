@@ -58,6 +58,16 @@ async function invokeWails<T>(cmd: string, args: Record<string, unknown> = {}): 
       return backend.OpenQueryLogFile() as Promise<T>;
     case 'get_query_log_path':
       return backend.GetQueryLogPath() as Promise<T>;
+    case 'get_error_log_path':
+      return backend.GetErrorLogPath() as Promise<T>;
+    case 'open_error_log':
+      return backend.OpenErrorLog() as Promise<T>;
+    case 'log_client_error':
+      return backend.LogClientError(
+        value.level ?? 'ERROR',
+        value.message ?? '',
+        value.stack ?? ''
+      ) as Promise<T>;
     case 'get_databases':
       return backend.GetDatabases(value.connectionId) as Promise<T>;
     case 'get_tables':
@@ -730,6 +740,17 @@ function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 
     case 'get_query_log_path':
       return Promise.resolve('./puffsql.log' as unknown as T);
+
+    case 'get_error_log_path':
+      return Promise.resolve('./PuffSQL-error.log' as unknown as T);
+
+    case 'open_error_log':
+      console.info('[Dev/Browser] Opening mock error log file: ./PuffSQL-error.log');
+      return Promise.resolve('./PuffSQL-error.log' as unknown as T);
+
+    case 'log_client_error':
+      console.info('[Dev/Browser] log_client_error:', args);
+      return Promise.resolve(undefined as unknown as T);
 
     case 'log_ai_request':
       console.info('[Dev/Browser] log_ai_request:', args);

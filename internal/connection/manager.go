@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"puffsql/internal/errlog"
 	"puffsql/internal/model"
 	"puffsql/internal/mssql"
 	"puffsql/internal/storage"
@@ -17,6 +18,7 @@ import (
 type Manager struct {
 	store       *storage.Store
 	credentials CredentialStore
+	logger      *errlog.Logger
 	mu          sync.RWMutex
 	servers     map[string]*mssql.Server
 	passwords   map[string]string
@@ -27,13 +29,27 @@ type Manager struct {
 type activeQuery struct {
 	connectionID string
 	cancel       context.CancelFunc
+	mu           sync.Mutex
 	spid         int
 }
 
-func NewManager(store *storage.Store) *Manager {
+func (q *activeQuery) setSPID(spid int) {
+	q.mu.Lock()
+	q.spid = spid
+	q.mu.Unlock()
+}
+
+func (q *activeQuery) SPID() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.spid
+}
+
+func NewManager(store *storage.Store, logger *errlog.Logger) *Manager {
 	return &Manager{
 		store:       store,
 		credentials: OSKeyring{},
+		logger:      logger,
 		servers:     map[string]*mssql.Server{},
 		passwords:   map[string]string{},
 		spids:       map[string]int{},
@@ -242,10 +258,19 @@ func (m *Manager) ExecuteQuery(
 	timeoutSeconds *int,
 	onProgress func(spid int, request string),
 ) (model.QueryResult, error) {
+	trace := newQueryTrace()
+	trace.Phase("connect")
+	logDatabase := databaseValue(database)
 	server, err := m.Server(ctx, id)
 	if err != nil {
+		m.logError("query.connect", id, logDatabase, trace.Summary(), err)
 		return model.QueryResult{}, err
 	}
+	if logDatabase == "" {
+		logDatabase = server.Database()
+	}
+	trace.Phase("connected")
+
 	reqID := ""
 	if requestID != nil {
 		reqID = strings.TrimSpace(*requestID)
@@ -265,11 +290,21 @@ func (m *Manager) ExecuteQuery(
 		m.mu.Unlock()
 	}()
 
+	stopWatchdogCh := make(chan struct{})
+	watchdogDone := make(chan struct{})
+	go m.watchQuery(stopWatchdogCh, watchdogDone, trace, id, logDatabase, statement)
+	var stopOnce sync.Once
+	stopWatchdog := func() {
+		stopOnce.Do(func() {
+			close(stopWatchdogCh)
+			<-watchdogDone
+		})
+	}
+	defer stopWatchdog()
+
 	result := server.Execute(queryCtx, database, statement, maxRows, timeoutSeconds, func(spid int) {
+		state.setSPID(spid)
 		m.mu.Lock()
-		if current := m.queries[reqID]; current != nil {
-			current.spid = spid
-		}
 		if spid > 0 {
 			m.spids[id] = spid
 		}
@@ -277,8 +312,129 @@ func (m *Manager) ExecuteQuery(
 		if onProgress != nil {
 			onProgress(spid, reqID)
 		}
-	})
+	}, trace.Phase)
+
+	stopWatchdog()
+	m.logQueryOutcome(trace, id, logDatabase, statement, result)
 	return result, nil
+}
+
+// watchQuery writes a diagnostic entry while a statement stays blocked. Without this trace a
+// stuck DROP DATABASE leaves no evidence at all, because no result ever comes back.
+func (m *Manager) watchQuery(
+	stop <-chan struct{},
+	done chan<- struct{},
+	trace *queryTrace,
+	id string,
+	database string,
+	statement string,
+) {
+	defer close(done)
+	next := 0
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			elapsed := trace.Elapsed()
+			if next >= len(stallThresholds) || elapsed < stallThresholds[next] {
+				continue
+			}
+			next++
+			last := trace.Last()
+			m.logger.Write(errlog.Entry{
+				Level:        "SLOW",
+				Source:       "query.stalled",
+				ConnectionID: id,
+				Database:     database,
+				Phase:        last,
+				Elapsed:      elapsed,
+				SQL:          statement,
+				Message: fmt.Sprintf(
+					"query is still running after %s (last phase: %s)\ntrace: %s",
+					elapsed.Round(time.Second), last, trace.Summary(),
+				),
+			})
+		}
+	}
+}
+
+func (m *Manager) logQueryOutcome(
+	trace *queryTrace,
+	id string,
+	database string,
+	statement string,
+	result model.QueryResult,
+) {
+	elapsed := time.Duration(result.ExecutionTime) * time.Millisecond
+	if elapsed <= 0 {
+		elapsed = trace.Elapsed()
+	}
+	hasError := false
+	for _, message := range result.Messages {
+		switch {
+		case message.Level == "error":
+			hasError = true
+			m.logger.Write(errlog.Entry{
+				Level:        "ERROR",
+				Source:       "query",
+				ConnectionID: id,
+				Database:     database,
+				Phase:        trace.Last(),
+				Code:         message.Code,
+				Line:         message.LineNumber,
+				Elapsed:      elapsed,
+				SQL:          statement,
+				Message:      withTrace(message.Message, trace),
+			})
+		case message.Level == "warning" && strings.Contains(message.Message, "cancelled"):
+			m.logger.Write(errlog.Entry{
+				Level:        "WARNING",
+				Source:       "query.cancelled",
+				ConnectionID: id,
+				Database:     database,
+				Phase:        trace.Last(),
+				Elapsed:      elapsed,
+				SQL:          statement,
+				Message:      withTrace(message.Message, trace),
+			})
+		}
+	}
+	if !hasError && elapsed >= slowQueryThreshold {
+		m.logger.Write(errlog.Entry{
+			Level:        "SLOW",
+			Source:       "query",
+			ConnectionID: id,
+			Database:     database,
+			Phase:        trace.Last(),
+			Elapsed:      elapsed,
+			SQL:          statement,
+			Message:      withTrace(fmt.Sprintf("query completed in %s", elapsed.Round(time.Millisecond)), trace),
+		})
+	}
+}
+
+func (m *Manager) logError(source, connectionID, database, phase string, err error) {
+	if err == nil {
+		return
+	}
+	m.logger.Write(errlog.Entry{
+		Level:        "ERROR",
+		Source:       source,
+		ConnectionID: connectionID,
+		Database:     database,
+		Phase:        phase,
+		Message:      err.Error(),
+	})
+}
+
+func databaseValue(database *string) string {
+	if database == nil {
+		return ""
+	}
+	return strings.TrimSpace(*database)
 }
 
 func (m *Manager) CancelQuery(connectionID string, requestID *string) error {
@@ -306,8 +462,11 @@ func (m *Manager) CancelQuery(connectionID string, requestID *string) error {
 	// separate connection for KILL before returning. The next command lazily opens a fresh pool;
 	// reconnecting in the background can otherwise race this KILL and target its replacement SPID.
 	m.disconnectOnly(connectionID)
-	if state.spid > 0 {
-		m.killSPID(connectionID, state.spid)
+	if spid := state.SPID(); spid > 0 {
+		if err := m.killSPID(connectionID, spid); err != nil {
+			m.logError("query.cancel", connectionID, "", "kill_spid",
+				fmt.Errorf("KILL %d failed: %w", spid, err))
+		}
 	}
 	return nil
 }
@@ -371,19 +530,20 @@ func (m *Manager) disconnectOnly(id string) {
 	}
 }
 
-func (m *Manager) killSPID(connectionID string, spid int) {
+func (m *Manager) killSPID(connectionID string, spid int) error {
 	profile, password, err := m.profileAndPassword(connectionID)
 	if err != nil {
-		return
+		return err
 	}
 	aux, err := mssql.Open(profile, password)
 	if err != nil {
-		return
+		return err
 	}
 	defer aux.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, _ = aux.DB.ExecContext(ctx, fmt.Sprintf("KILL %d", spid))
+	_, err = aux.DB.ExecContext(ctx, fmt.Sprintf("KILL %d", spid))
+	return err
 }
 
 func (m *Manager) setCachedPassword(id, password string) {

@@ -18,34 +18,44 @@ func (a *App) ExportDatabaseTablesToExcel(
 	database string,
 	tables []model.ExcelTableRef,
 ) (model.ExcelExportResult, error) {
+	defer a.recoverPanic("export.tables")
 	path, canceled, err := a.pickExcelPath(database, "匯出選取的 Table 資料至 Excel", "tables")
 	if err != nil || canceled {
+		a.logError("export.tables", err)
 		return model.ExcelExportResult{Canceled: canceled}, err
 	}
 	ctx, cancel := context.WithTimeout(a.context(), 30*time.Minute)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("export.tables", err)
 		return model.ExcelExportResult{}, err
 	}
-	return server.ExportDatabaseTablesExcel(ctx, database, tables, path, a.emitExcelProgress)
+	result, err := server.ExportDatabaseTablesExcel(ctx, database, tables, path, a.emitExcelProgress)
+	a.logError("export.tables", err)
+	return result, err
 }
 
 func (a *App) ExportDatabaseSchemaToExcel(
 	connectionID string,
 	database string,
 ) (model.ExcelExportResult, error) {
+	defer a.recoverPanic("export.schema")
 	path, canceled, err := a.pickExcelPath(database, "匯出資料庫完整 Table Schema 至 Excel", "schema")
 	if err != nil || canceled {
+		a.logError("export.schema", err)
 		return model.ExcelExportResult{Canceled: canceled}, err
 	}
 	ctx, cancel := context.WithTimeout(a.context(), 10*time.Minute)
 	defer cancel()
 	server, err := a.manager.Server(ctx, connectionID)
 	if err != nil {
+		a.logError("export.schema", err)
 		return model.ExcelExportResult{}, err
 	}
-	return server.ExportDatabaseSchemaExcel(ctx, database, path, a.emitExcelProgress)
+	result, err := server.ExportDatabaseSchemaExcel(ctx, database, path, a.emitExcelProgress)
+	a.logError("export.schema", err)
+	return result, err
 }
 
 func (a *App) pickExcelPath(database, title, suffix string) (string, bool, error) {

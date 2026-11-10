@@ -219,6 +219,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { useQueryStore } from '@/stores/queryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useSchemaStore } from '@/stores/schemaStore';
 import MonacoEditor from '@/components/editor/MonacoEditor.vue';
 import TableDataViewer from '@/components/editor/TableDataViewer.vue';
 import TableStructureViewer from '@/components/editor/TableStructureViewer.vue';
@@ -240,6 +241,7 @@ const workspaceStore = useWorkspaceStore();
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
+const schemaStore = useSchemaStore();
 
 const monacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null);
 
@@ -680,6 +682,18 @@ function handleDangerousModalCancel() {
 
 async function executeSql(connId: string, db: string, targetSql: string) {
   const result = await queryStore.execute(connId, db, targetSql);
+
+  // A successful DROP DATABASE invalidates the explorer cache and may remove the active database.
+  // Resync the backend-facing state so the next statement does not keep issuing USE [dropped].
+  if (/\bDROP\s+DATABASE\b/i.test(targetSql)) {
+    schemaStore.forgetDatabase(connId, db);
+    try {
+      await connectionStore.refreshDatabases(connId);
+      workspaceStore.retargetDatabase(connId, db, connectionStore.activeDatabase);
+    } catch (err) {
+      console.warn('Failed to refresh databases after DROP DATABASE:', err);
+    }
+  }
 
   // Auto-switch to Results or Messages (if query has no data or error, show Messages like SSMS)
   const totalRows = result?.resultSets?.reduce((sum, rs) => sum + (rs.rowCount ?? rs.rows?.length ?? 0), 0) ?? 0;

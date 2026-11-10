@@ -140,12 +140,12 @@
         @update:model-value="val => onMaxRowsChange(val as string | number)"
       >
         <template #value="slotProps">
-          <span class="text-[11px] font-mono leading-none">
+          <span class="text-xxs font-mono leading-none">
             {{ limitOptions.find(o => o.value === slotProps.value)?.label ?? (slotProps.value === 'none' ? 'No Limit' : slotProps.value) }}
           </span>
         </template>
         <template #option="slotProps">
-          <span class="text-[11px] font-mono py-0.5">
+          <span class="text-xxs font-mono py-0.5">
             {{ slotProps.option.label }}
           </span>
         </template>

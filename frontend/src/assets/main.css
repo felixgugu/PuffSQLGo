@@ -15,6 +15,18 @@
 
   :root {
     --app-font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei UI", "Noto Sans TC", sans-serif;
+
+    /* ==========================================================================
+       One rem-based type scale.
+       `--app-font-size-primary` is the only value the 外觀 › 介面字級 setting writes;
+       every other step is derived from it in rem so the whole UI scales together:
+       primary 14px → heading 16px / secondary 13px / caption 12px.
+       ========================================================================== */
+    --app-font-size-primary: 0.875rem;
+    --app-font-size-heading: calc(var(--app-font-size-primary) + 0.125rem);
+    --app-font-size-secondary: calc(var(--app-font-size-primary) - 0.0625rem);
+    --app-font-size-caption: calc(var(--app-font-size-primary) - 0.125rem);
+
     color-scheme: light;
 
     /* ==========================================================================

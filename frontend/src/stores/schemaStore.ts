@@ -170,6 +170,7 @@ export const useSchemaStore = defineStore('schema', () => {
     const key = dbKey(cId, db);
     const rawTables = tablesByDb[key] || [];
     const rawRoutines = routinesByDb[key] || [];
+    const rawSchemas = schemasByDb[key] || [];
 
     const items: QuickFinderItem[] = [];
 
@@ -197,6 +198,22 @@ export const useSchemaStore = defineStore('schema', () => {
       });
     }
 
+    // Columns come from the cached database schema (the same snapshot autocomplete uses), so the
+    // finder can search them without an extra round trip per table.
+    for (const table of rawSchemas) {
+      for (const column of table.columns) {
+        items.push({
+          id: `column:${table.schema}.${table.name}.${column.name}`,
+          schema: table.schema,
+          name: column.name,
+          type: 'column',
+          table: table.name,
+          database: db,
+          connId: cId,
+        });
+      }
+    }
+
     return items;
   }
 
@@ -207,10 +224,22 @@ export const useSchemaStore = defineStore('schema', () => {
   ): Promise<QuickFinderItem[]> {
     if (!connId || !database) return [];
     await Promise.all([
+      loadDatabaseSchema(connId, database, force),
       loadDatabaseTables(connId, database, force),
       loadDatabaseRoutines(connId, database, force),
     ]);
     return getDatabaseObjects(connId, database);
+  }
+
+  /** Drops cached metadata for a database that no longer exists (for example after DROP DATABASE). */
+  function forgetDatabase(connId: string, database: string): void {
+    const key = dbKey(connId, database);
+    delete schemasByDb[key];
+    delete tablesByDb[key];
+    delete routinesByDb[key];
+    delete loadingByDb[key];
+    delete loadingTablesByDb[key];
+    delete loadingRoutinesByDb[key];
   }
 
   return {
@@ -230,5 +259,6 @@ export const useSchemaStore = defineStore('schema', () => {
     isDatabaseLoaded,
     getDatabaseObjects,
     ensureDatabaseObjectsLoaded,
+    forgetDatabase,
   };
 });

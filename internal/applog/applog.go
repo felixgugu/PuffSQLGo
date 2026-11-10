@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"puffsql/internal/errlog"
 	"puffsql/internal/model"
 )
 
@@ -63,7 +64,7 @@ func (l *Logger) LogQuery(
 	fmt.Fprintf(&body, "[%s] [%s] connection=%s database=%s duration=%dms\n",
 		time.Now().Format("2006-01-02 15:04:05"), status, connectionID, database, durationMS)
 	body.WriteString("--- SQL ---\n")
-	body.WriteString(strings.TrimSpace(sql))
+	body.WriteString(errlog.Redact(strings.TrimSpace(sql)))
 	body.WriteString("\n")
 	if len(messages) > 0 {
 		body.WriteString("--- MESSAGES ---\n")

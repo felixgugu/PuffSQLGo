@@ -100,7 +100,7 @@
         </div>
 
         <!-- Right: Type Filter Chips -->
-        <div class="flex items-center space-x-1">
+        <div class="flex items-center flex-wrap justify-end gap-1">
           <SqButton
             v-for="chip in filterChips"
             :key="chip.type"
@@ -173,7 +173,8 @@
             :tone="
               res.item.type === 'table' ? 'neutral' :
               res.item.type === 'view' ? 'plan' :
-              res.item.type === 'procedure' ? 'warn' : 'neutral'
+              res.item.type === 'procedure' ? 'warn' :
+              res.item.type === 'column' ? 'structure' : 'neutral'
             "
             class="font-medium uppercase tracking-wider"
           >
@@ -181,9 +182,10 @@
               <Table2 v-if="res.item.type === 'table'" class="w-3 h-3" />
               <List v-else-if="res.item.type === 'view'" class="w-3 h-3" />
               <Play v-else-if="res.item.type === 'procedure'" class="w-3 h-3" />
+              <Columns v-else-if="res.item.type === 'column'" class="w-3 h-3" />
               <FileCode v-else class="w-3 h-3" />
             </template>
-            <span>{{ res.item.type === 'table' ? 'TABLE' : res.item.type === 'view' ? 'VIEW' : res.item.type === 'procedure' ? 'PROC' : 'FUNC' }}</span>
+            <span>{{ res.item.type === 'table' ? 'TABLE' : res.item.type === 'view' ? 'VIEW' : res.item.type === 'procedure' ? 'PROC' : res.item.type === 'column' ? 'COL' : 'FUNC' }}</span>
           </SqChip>
 
           <!-- Highlighted Name -->
@@ -194,6 +196,14 @@
                 :key="`sch-${cIdx}`"
                 :class="chunk.highlight ? 'text-warn font-bold underline decoration-amber-400/80' : ''"
               >{{ chunk.text }}</span>.</span>
+            <template v-if="res.item.type === 'column' && res.item.table">
+              <span class="text-dark-400 text-xxs">
+                <span
+                  v-for="(chunk, cIdx) in getHighlightedOwnerChunks(res)"
+                  :key="`own-${cIdx}`"
+                  :class="chunk.highlight ? 'text-warn font-bold underline decoration-amber-400/80' : ''"
+                >{{ chunk.text }}</span>.</span>
+            </template>
             <span class="font-medium text-dark-100">
               <span
                 v-for="(chunk, cIdx) in getHighlightedNameChunks(res)"
@@ -234,6 +244,30 @@
               size="sm"
               variant="outline"
               @click.stop="generateSelectQuery(res.item)"
+              v-tooltip.top="$t('quickFinder.generateSelectTooltip')"
+            >
+              <template #icon><FileEdit class="w-3.5 h-3.5" /></template>
+            </SqButton>
+          </template>
+
+          <!-- For Columns: Structure of the owning table, SELECT of the column -->
+          <template v-else-if="res.item.type === 'column'">
+            <SqButton
+              type="button"
+              :label="$t('quickFinder.structureBtn')"
+              size="sm"
+              variant="outline"
+              @click.stop="openTableStructure(res.item)"
+              v-tooltip.top="$t('quickFinder.openStructureTooltip')"
+            >
+              <template #icon><List class="w-3.5 h-3.5" /></template>
+            </SqButton>
+            <SqButton
+              type="button"
+              :label="$t('quickFinder.selectBtn')"
+              size="sm"
+              variant="outline"
+              @click.stop="generateColumnSelectQuery(res.item)"
               v-tooltip.top="$t('quickFinder.generateSelectTooltip')"
             >
               <template #icon><FileEdit class="w-3.5 h-3.5" /></template>
@@ -333,6 +367,7 @@ import SqInput from '@/components/ui/SqInput.vue';
 import SqButton from '@/components/ui/SqButton.vue';
 import SqSelect from '@/components/ui/SqSelect.vue';
 import {
+  Columns,
   Database,
   FileCode,
   FileEdit,
@@ -357,7 +392,7 @@ import {
   type QuickFinderObjectType,
   type ScoredQuickFinderItem,
 } from '@/utils/fuzzySearch';
-import { generateTableSelectSql } from '@/utils/tableSelectSql';
+import { generateColumnSelectSql, generateTableSelectSql } from '@/utils/tableSelectSql';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -414,7 +449,11 @@ const isLoading = computed(() => {
   const db = currentDatabase.value || connectionStore.activeDatabase;
   if (!cId || !db) return false;
   const key = `${cId}:${db}`;
-  return !!(schemaStore.loadingTablesByDb[key] || schemaStore.loadingRoutinesByDb[key]);
+  return !!(
+    schemaStore.loadingByDb[key] ||
+    schemaStore.loadingTablesByDb[key] ||
+    schemaStore.loadingRoutinesByDb[key]
+  );
 });
 
 // All objects loaded for active connection & selected database (excluding hidden tables)
@@ -427,6 +466,9 @@ const rawObjects = computed<QuickFinderItem[]>(() => {
     if (o.type === 'table') {
       return !settingsStore.isTableHidden(o.name, o.schema);
     }
+    if (o.type === 'column') {
+      return !settingsStore.isTableHidden(o.table ?? '', o.schema);
+    }
     return true;
   });
 });
@@ -435,17 +477,26 @@ const { t } = useI18n();
 
 const filterChips = computed(() => {
   const all = rawObjects.value;
-  const tables = all.filter((o) => o.type === 'table').length;
-  const views = all.filter((o) => o.type === 'view').length;
-  const procs = all.filter((o) => o.type === 'procedure').length;
-  const funcs = all.filter((o) => o.type === 'function').length;
+  const counts: Record<QuickFinderObjectType, number> = {
+    table: 0,
+    view: 0,
+    procedure: 0,
+    function: 0,
+    column: 0,
+  };
+  for (const item of all) counts[item.type] += 1;
+
+  const allVisible = searchQuery.value.trim()
+    ? all.length
+    : all.length - counts.column;
 
   return [
-    { type: 'all' as const, label: t('quickFinder.all'), count: all.length },
-    { type: 'table' as const, label: t('quickFinder.tables'), count: tables },
-    { type: 'view' as const, label: t('quickFinder.views'), count: views },
-    { type: 'procedure' as const, label: t('quickFinder.procedures'), count: procs },
-    { type: 'function' as const, label: t('quickFinder.functions'), count: funcs },
+    { type: 'all' as const, label: t('quickFinder.all'), count: allVisible },
+    { type: 'table' as const, label: t('quickFinder.tables'), count: counts.table },
+    { type: 'view' as const, label: t('quickFinder.views'), count: counts.view },
+    { type: 'procedure' as const, label: t('quickFinder.procedures'), count: counts.procedure },
+    { type: 'function' as const, label: t('quickFinder.functions'), count: counts.function },
+    { type: 'column' as const, label: t('quickFinder.columns'), count: counts.column },
   ];
 });
 
@@ -460,7 +511,13 @@ const scoredResults = computed<ScoredQuickFinderItem[]>(() => {
 
 const totalMatchingCount = computed(() => {
   const all = rawObjects.value;
-  if (activeTypeTab.value === 'all') return all.length;
+  if (activeTypeTab.value === 'all') {
+    // The unfiltered "all" list hides columns (see filterAndRankQuickObjects), so the footer's
+    // total must match what the list can actually show.
+    return searchQuery.value.trim()
+      ? all.length
+      : all.filter((o) => o.type !== 'column').length;
+  }
   return all.filter((o) => o.type === activeTypeTab.value).length;
 });
 
@@ -484,7 +541,11 @@ watch(
       const db = currentDatabase.value;
       if (cId && db && connectionStore.status === 'connected') {
         const key = `${cId}:${db}`;
-        if (schemaStore.tablesByDb[key] === undefined || schemaStore.routinesByDb[key] === undefined) {
+        if (
+          schemaStore.schemasByDb[key] === undefined ||
+          schemaStore.tablesByDb[key] === undefined ||
+          schemaStore.routinesByDb[key] === undefined
+        ) {
           schemaStore.ensureDatabaseObjectsLoaded(cId, db).catch((err) => {
             console.warn('[QuickFinder] Error loading objects:', err);
           });
@@ -500,6 +561,10 @@ function getHighlightedSchemaChunks(res: ScoredQuickFinderItem) {
 
 function getHighlightedNameChunks(res: ScoredQuickFinderItem) {
   return highlightMatchedChunks(res.item.name, res.nameIndices);
+}
+
+function getHighlightedOwnerChunks(res: ScoredQuickFinderItem) {
+  return highlightMatchedChunks(res.item.table ?? '', res.ownerIndices);
 }
 
 async function handleDatabaseChange() {
@@ -553,7 +618,7 @@ function handleEnterKey(event: KeyboardEvent) {
   event.preventDefault();
 
   if (event.shiftKey) {
-    if (current.type === 'table' || current.type === 'view') {
+    if (current.type === 'table' || current.type === 'view' || current.type === 'column') {
       openTableStructure(current);
     } else {
       viewDefinition(current);
@@ -564,6 +629,8 @@ function handleEnterKey(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey) {
     if (current.type === 'table' || current.type === 'view') {
       generateSelectQuery(current);
+    } else if (current.type === 'column') {
+      generateColumnSelectQuery(current);
     } else if (current.type === 'procedure') {
       generateExecQuery(current);
     } else if (current.type === 'function') {
@@ -576,7 +643,9 @@ function handleEnterKey(event: KeyboardEvent) {
 }
 
 function handlePrimaryAction(item: QuickFinderItem) {
-  if (item.type === 'table' || item.type === 'view') {
+  if (item.type === 'column') {
+    openTableStructure(item);
+  } else if (item.type === 'table' || item.type === 'view') {
     openTableData(item);
   } else {
     viewDefinition(item);
@@ -588,13 +657,22 @@ function openTableData(item: QuickFinderItem) {
   closeModal();
 }
 
+/** Columns open the structure of the table/view that owns them. */
 function openTableStructure(item: QuickFinderItem) {
-  workspaceStore.addTableStructureTab(item.schema, item.name, item.connId, item.database);
+  const tableName = item.type === 'column' ? item.table ?? item.name : item.name;
+  workspaceStore.addTableStructureTab(item.schema, tableName, item.connId, item.database);
   closeModal();
 }
 
 function generateSelectQuery(item: QuickFinderItem) {
   const sql = generateTableSelectSql(item.schema, item.name);
+  workspaceStore.addSqlTab(sql, `${item.name}.sql`, item.connId, item.database);
+  closeModal();
+}
+
+function generateColumnSelectQuery(item: QuickFinderItem) {
+  const tableName = item.table ?? '';
+  const sql = generateColumnSelectSql(item.schema, tableName, item.name);
   workspaceStore.addSqlTab(sql, `${item.name}.sql`, item.connId, item.database);
   closeModal();
 }

@@ -25,6 +25,15 @@
         >
           <template #icon><FileText class="w-3.5 h-3.5" /></template>
         </SqButton>
+        <SqButton
+          type="button"
+          :label="$t('results.errorLog')"
+          size="sm"
+          @click="handleOpenErrorLog"
+          :v-tooltip.top="$t('results.openErrorLogTooltip')"
+        >
+          <template #icon><TriangleAlert class="w-3.5 h-3.5" /></template>
+        </SqButton>
         <span v-if="messages.length > 0" class="text-dark-600">|</span>
         <SqButton
           v-if="messages.length > 0"
@@ -155,11 +164,13 @@ import {
   Copy,
   FileText,
   Sparkles,
+  TriangleAlert,
 } from '@/components/icons';
 import SqChip from '@/components/ui/SqChip.vue';
 import type { SessionMessageItem, QueryMessage } from '@/types/query';
 import type { SqlEditorTab } from '@/types/workspace';
 import { queryService } from '@/services/queryService';
+import { errorLogService } from '@/services/errorLogService';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAiChatStore } from '@/stores/aiChatStore';
 import { useQueryStore } from '@/stores/queryStore';
@@ -218,6 +229,16 @@ async function handleOpenLog() {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     workspaceStore.showToast(`開啟日誌檔失敗：${msg}`, 'error', 3500);
+  }
+}
+
+async function handleOpenErrorLog() {
+  try {
+    const path = await errorLogService.open();
+    workspaceStore.showToast(`已在預設編輯器開啟錯誤日誌：${path}`, 'info', 3000);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    workspaceStore.showToast(`開啟錯誤日誌失敗：${msg}`, 'error', 3500);
   }
 }
 
