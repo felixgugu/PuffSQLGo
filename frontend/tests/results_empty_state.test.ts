@@ -148,7 +148,7 @@ describe('Result grid data semantics', () => {
     const source = readSource('src/components/results/ResultGridItem.vue');
     assert.match(
       source,
-      /:label="modifiedCount > 0 \? \$t\('results\.commitWithCount', \{ count: modifiedCount \}\) : \$t\('common\.commit'\)"/,
+      /:label="pendingRowCount > 0 \? \$t\('results\.commitWithCount', \{ count: pendingRowCount \}\) : \$t\('common\.commit'\)"/,
       'the commit label must not hardcode Chinese text'
     );
     assert.doesNotMatch(source, /`提交 /, 'no hardcoded commit label may remain');

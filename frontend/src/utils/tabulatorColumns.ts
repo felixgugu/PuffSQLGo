@@ -255,8 +255,8 @@ export interface DataColumnOptions {
   headerTooltip: string;
   isPrimaryKey: boolean;
   isIdentity: boolean;
-  /** Returns whether this column may be edited right now (result grid inline editing). */
-  isEditable?: () => boolean;
+  /** Returns whether this cell may be edited right now (result grid inline editing). */
+  isEditable?: (cell?: TabulatorCellComponent) => boolean;
   isModified?: (rowData: CellValue[] | undefined, columnIndex: number) => boolean;
   extraClass?: string;
 }
@@ -295,7 +295,7 @@ export function buildDataColumn(options: DataColumnOptions): TabulatorColumnDefi
   };
 
   if (isEditable) {
-    definition.editable = () => isEditable();
+    definition.editable = (cell) => isEditable(cell);
     definition.editor = createCellEditor(column);
   }
 

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import type { WorkspaceTab, BottomPanelTab, SqlEditorTab, TableDataTab, TableStructureTab, ExecutionPlanTab, ErDiagramTab } from '@/types/workspace';
 import { format as formatSql } from 'sql-formatter';
+import { unformatSql } from '@/utils/sqlUnformatter';
 import { useConnectionStore } from './connectionStore';
 import { useSqlFolderStore } from './sqlFolderStore';
 import { useToastStore } from './toastStore';
@@ -611,6 +612,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  function unformatActiveQuery(): void {
+    const current = activeTab.value;
+    if (current && current.type === 'sql_editor') {
+      try {
+        current.query = unformatSql(current.query);
+        current.isDirty = true;
+      } catch (err) {
+        console.warn('Failed to unformat SQL:', err);
+      }
+    }
+  }
+
   function setBottomPanelTab(tab: BottomPanelTab) {
     bottomPanelTab.value = tab;
     isBottomPanelOpen.value = true;
@@ -828,6 +841,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     bumpTableDataVersion,
     getTableDataVersion,
     formatActiveQuery,
+    unformatActiveQuery,
     setBottomPanelTab,
     toggleBottomPanel,
     toggleSidebar,

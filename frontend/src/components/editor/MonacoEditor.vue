@@ -39,6 +39,7 @@ import { generateTableSelectSql } from '@/utils/tableSelectSql';
 import { dispatchClearGridSelection } from '@/utils/tabulatorGrid';
 import { useEditorStatementGuard, type EditorStatementGuard } from '@/composables/useEditorStatementGuard';
 import { format as formatSql } from 'sql-formatter';
+import { unformatSql } from '@/utils/sqlUnformatter';
 import type { QueryRunMode, SqlEditorToolbarAction } from '@/types/editor';
 
 const props = defineProps<{
@@ -253,9 +254,10 @@ function duplicateLineOrSelection() {
 }
 
 /**
- * Format selected SQL only if selection exists, otherwise format only the single statement at cursor.
+ * Applies a SQL text transform to the selection, or to the single statement at the cursor when
+ * nothing is selected. Format and unformat share the same range and highlight behaviour.
  */
-function formatCode() {
+function applySqlTransform(action: 'format' | 'unformat', transform: (sql: string) => string) {
   if (!editorInstance) return;
   const model = editorInstance.getModel();
   if (!model) return;
@@ -264,34 +266,30 @@ function formatCode() {
   const position = editorInstance.getPosition() || { lineNumber: 1, column: 1 };
   const docText = model.getValue();
 
-  // 1. If user selected a range: format selection only
+  // 1. If user selected a range: transform selection only
   if (selection && !selection.isEmpty()) {
     const rawSql = model.getValueInRange(selection);
     try {
-      const formatted = formatSql(rawSql, {
-        language: 'tsql',
-        keywordCase: 'upper',
-        tabWidth: settingsStore.editorTabSize || 2,
-      });
-      editorInstance.executeEdits('format-selection', [
+      const transformed = transform(rawSql);
+      editorInstance.executeEdits(`${action}-selection`, [
         {
           range: selection,
-          text: formatted,
+          text: transformed,
           forceMoveMarkers: true,
         },
       ]);
-      const newLines = formatted.split(/\r?\n/).length;
+      const newLines = transformed.split(/\r?\n/).length;
       highlightRange({
         startLineNumber: selection.startLineNumber,
         endLineNumber: selection.startLineNumber + newLines - 1,
       });
     } catch (err) {
-      console.warn('SQL format selection failed:', err);
+      console.warn(`SQL ${action} selection failed:`, err);
     }
     return;
   }
 
-  // 2. If no selection: format only current standalone statement at cursor
+  // 2. If no selection: transform only current standalone statement at cursor
   const extracted = extractStatementAtCursor(docText, position.lineNumber);
   if (!extracted.sql || !extracted.range) {
     return;
@@ -307,28 +305,37 @@ function formatCode() {
   const targetText = model.getValueInRange(targetRange);
 
   try {
-    const formatted = formatSql(targetText, {
-      language: 'tsql',
-      keywordCase: 'upper',
-      tabWidth: settingsStore.editorTabSize || 2,
-    });
-
-    editorInstance.executeEdits('format-statement', [
+    const transformed = transform(targetText);
+    editorInstance.executeEdits(`${action}-statement`, [
       {
         range: targetRange,
-        text: formatted,
+        text: transformed,
         forceMoveMarkers: true,
       },
     ]);
 
-    const newLines = formatted.split(/\r?\n/).length;
+    const newLines = transformed.split(/\r?\n/).length;
     highlightRange({
       startLineNumber,
       endLineNumber: startLineNumber + newLines - 1,
     });
   } catch (err) {
-    console.warn('SQL format statement failed:', err);
+    console.warn(`SQL ${action} statement failed:`, err);
   }
+}
+
+function formatCode() {
+  applySqlTransform('format', (sql) =>
+    formatSql(sql, {
+      language: 'tsql',
+      keywordCase: 'upper',
+      tabWidth: settingsStore.editorTabSize || 2,
+    })
+  );
+}
+
+function unformatCode() {
+  applySqlTransform('unformat', unformatSql);
 }
 
 function runEditorAction(action: SqlEditorToolbarAction) {
@@ -454,6 +461,14 @@ onMounted(() => {
     monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
     () => {
       formatCode();
+    }
+  );
+
+  // Shortcut: Shift + Alt + M -> Unformat (minify) selected SQL or standalone SQL at cursor
+  editorInstance.addCommand(
+    monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyM,
+    () => {
+      unformatCode();
     }
   );
 
@@ -924,6 +939,7 @@ defineExpose({
   getSelectedOrFullQuery,
   duplicateLineOrSelection,
   formatCode,
+  unformatCode,
   runEditorAction,
   insertTextAtCursor,
   getTableNameAtCursor,

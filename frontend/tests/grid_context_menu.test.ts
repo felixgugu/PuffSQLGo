@@ -169,7 +169,7 @@ describe('Result grid: double-click copies a read-only cell value', () => {
   test('double-click copy leaves editable cells to the editor', () => {
     const source = readSource('src/components/results/ResultGridItem.vue');
 
-    const guardIdx = source.indexOf('if (isColumnEditable(colIdx)) return;');
+    const guardIdx = source.indexOf('if (isColumnEditable(colIdx, rowData)) return;');
     const writeIdx = source.indexOf('navigator.clipboard.writeText(text)', guardIdx);
 
     assert.ok(guardIdx !== -1, 'the handler should bail out when the cell is editable');

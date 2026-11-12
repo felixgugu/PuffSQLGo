@@ -127,6 +127,7 @@
           @run-query="runQuery"
           @cancel-query="queryStore.cancelQuery"
           @format-sql="formatCode"
+          @unformat-sql="unformatCode"
           @editor-action="runEditorAction"
         />
 
@@ -635,6 +636,14 @@ function formatCode() {
   }
 }
 
+function unformatCode() {
+  if (monacoRef.value) {
+    monacoRef.value.unformatCode();
+  } else if (workspaceStore.activeTab?.type === 'sql_editor') {
+    workspaceStore.unformatActiveQuery();
+  }
+}
+
 function runEditorAction(action: SqlEditorToolbarAction) {
   if (workspaceStore.activeTab?.type !== 'sql_editor') return;
   monacoRef.value?.runEditorAction(action);
@@ -1025,6 +1034,7 @@ onBeforeUnmount(() => {
 defineExpose({
   runQuery,
   formatCode,
+  unformatCode,
   runEditorAction,
   saveActiveTab,
   openSqlFile,

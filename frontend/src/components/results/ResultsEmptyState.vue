@@ -16,6 +16,9 @@
       <p class="mt-2.5 text-xs font-medium text-dark-200">{{ title }}</p>
       <p class="mt-1 text-xxs leading-relaxed text-dark-400">{{ description }}</p>
 
+      <!-- Optional action (e.g. "insert the first row" when an editable query returned no rows). -->
+      <slot />
+
       <ul v-if="variant === 'idle'" class="mt-3 flex flex-col gap-1 w-full max-w-[276px] text-left">
         <li v-for="hint in hints" :key="hint.keys" class="flex items-center gap-2">
           <kbd class="sq-empty-kbd">{{ hint.keys }}</kbd>

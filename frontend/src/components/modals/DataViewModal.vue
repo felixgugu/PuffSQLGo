@@ -173,7 +173,7 @@
       <!-- Table Container (Vertical Scrolling) -->
       <div
         ref="tableContainerRef"
-        class="flex-1 overflow-y-auto overflow-x-hidden bg-dark-900/60 dark:bg-dark-900"
+        class="flex-1 overflow-y-auto overflow-x-hidden bg-dark-900"
         @scroll="onTableScroll"
       >
         <!-- Empty State when filter matches nothing -->
@@ -192,47 +192,55 @@
 
         <!-- Vertical Four-Column Table -->
         <table v-else class="w-full border-collapse text-left text-xs font-sans table-fixed">
-          <!-- Table Header -->
-          <thead class="sticky top-0 z-10 bg-dark-800 text-dark-300 font-medium text-xxs uppercase tracking-wider border-b border-dark-750 select-none">
+          <!-- The value column tint lives on the column itself, so cell borders stay visible. -->
+          <colgroup>
+            <col class="w-[24%]" />
+            <col class="bg-dark-950 dark:bg-dark-800" />
+            <col class="w-[15%]" />
+            <col class="w-[13%]" />
+          </colgroup>
+
+          <!-- Table Header: one uniform chrome bar; no column gets a different header colour -->
+          <thead class="sticky top-0 z-10 bg-dark-750 text-dark-500 font-medium text-xxs uppercase tracking-wider border-b border-dark-700 select-none">
             <tr>
-              <th class="w-[24%] py-2 px-3.5 border-r border-dark-750">
+              <th class="py-1 px-3.5 border-r border-dark-700">
                 欄位名稱 (Column)
               </th>
-              <th class="py-2 px-3.5 border-r border-dark-750">
+              <th class="py-1 px-3.5 border-r border-dark-700">
                 欄位值 (Value)
               </th>
-              <th class="w-[15%] py-2 px-3.5 border-r border-dark-750">
+              <th class="py-1 px-3.5 border-r border-dark-700">
                 屬性 (Property)
               </th>
-              <th class="w-[13%] py-2 px-3.5">
+              <th class="py-1 px-3.5">
                 可否空值 (Nullable)
               </th>
             </tr>
           </thead>
 
           <!-- Table Body -->
-          <tbody class="divide-y divide-dark-750/70">
+          <tbody class="divide-y divide-dark-700">
             <tr
               v-for="field in dataViewStore.filteredFields"
               :key="field.index"
-              class="hover:bg-dark-750/40 transition-colors group"
+              class="hover:bg-dark-750/30 dark:hover:bg-dark-800/50 transition-colors group"
             >
               <!-- 1. Column Name Cell (single line, never squished) -->
-              <td class="w-[24%] py-2.5 px-3.5 align-top border-r border-dark-750/70 select-text">
+              <td class="py-1 px-3.5 align-top border-r border-dark-700 select-text">
                 <div class="flex items-center space-x-1.5 flex-wrap">
                   <span class="font-mono font-medium text-dark-100 break-words">
                     {{ field.name }}
                   </span>
                   <span
                     v-if="field.isPrimaryKey"
-                    class="text-xxs bg-amber-500/20 text-warn border border-amber-500/30 px-1.5 py-0.5 rounded font-sans font-semibold"
+                    class="text-xxs bg-amber-500/10 text-warn border border-amber-500/25 px-1.5 py-0.5 rounded font-sans font-semibold"
                     title="主鍵 (Primary Key)"
                   >
                     PK
                   </span>
                   <span
                     v-if="field.isIdentity"
-                    class="text-xxs bg-sky-500/20 text-info border border-sky-500/30 px-1.5 py-0.5 rounded font-sans font-semibold"
+                    class="text-xxs bg-sky-500/10 text-info border border-sky-500/25 px-1.5 py-0.5 rounded font-sans font-semibold"
                     title="識別欄位 (Identity)"
                   >
                     ID
@@ -241,14 +249,14 @@
               </td>
 
               <!-- 2. Column Value Cell (Word break, format types, copyable) -->
-              <td class="py-2.5 px-3.5 align-top select-text relative border-r border-dark-750/70">
+              <td class="py-1 px-3.5 align-top select-text relative border-r border-dark-700">
                 <div class="flex items-start justify-between group/val">
                   <!-- Value Display Area -->
                   <div class="flex-1 min-w-0 pr-8">
                     <!-- NULL -->
                     <span
                       v-if="field.specialType === 'null'"
-                      class="italic text-dark-500 font-mono text-xs px-1.5 py-0.5 rounded bg-dark-800 border border-dark-750 inline-block select-none"
+                      class="italic text-dark-500 font-mono text-xs px-1.5 py-0.5 rounded bg-dark-800/50 border border-dark-750/60 inline-block select-none"
                     >
                       NULL
                     </span>
@@ -265,7 +273,7 @@
                     <span
                       v-else-if="field.specialType === 'boolean'"
                       class="inline-flex items-center px-1.5 py-0.5 rounded text-xxs font-semibold font-mono"
-                      :class="field.value ? 'bg-emerald-100 dark:bg-emerald-950/70 text-ok border border-emerald-200 dark:border-emerald-800/60' : 'bg-rose-100 dark:bg-rose-950/70 text-danger border border-rose-200 dark:border-rose-800/60'"
+                      :class="field.value ? 'bg-emerald-500/10 text-ok border border-emerald-500/25' : 'bg-rose-500/10 text-danger border border-rose-500/25'"
                     >
                       {{ field.displayValue }}
                     </span>
@@ -273,7 +281,7 @@
                     <!-- Binary -->
                     <span
                       v-else-if="field.specialType === 'binary'"
-                      class="bg-indigo-100 dark:bg-indigo-950/70 text-structure px-1.5 py-0.5 rounded text-xs border border-indigo-200 dark:border-indigo-800/50 font-mono inline-block"
+                      class="bg-dark-800/50 text-dark-300 px-1.5 py-0.5 rounded text-xs border border-dark-700/60 font-mono inline-block"
                     >
                       {{ field.displayValue }}
                     </span>
@@ -281,20 +289,20 @@
                     <!-- JSON Object or String -->
                     <pre
                       v-else-if="field.specialType === 'json'"
-                      class="font-mono text-xs text-info bg-dark-800/70 dark:bg-dark-800 p-2 rounded border border-dark-700 overflow-x-auto max-h-64 whitespace-pre-wrap break-words select-text"
+                      class="font-mono text-xs text-dark-200 bg-dark-900/70 dark:bg-dark-900/60 p-2 rounded border border-dark-750/70 overflow-x-auto max-h-64 whitespace-pre-wrap break-words select-text"
                     >{{ field.formattedJson || field.displayValue }}</pre>
 
                     <!-- Normal Text / Numbers / Dates -->
                     <div
                       v-else
-                      class="font-mono text-xs text-dark-100 whitespace-pre-wrap break-words leading-relaxed select-text"
+                      class="font-mono text-xs text-dark-100 whitespace-pre-wrap break-words leading-snug select-text"
                     >{{ field.displayValue }}</div>
                   </div>
 
                   <!-- Single Cell Copy Button (Hover display) -->
                   <button
                     type="button"
-                    class="opacity-0 group-hover/val:opacity-100 transition-opacity p-1 text-dark-400 hover:text-info rounded hover:bg-dark-750"
+                    class="opacity-0 group-hover/val:opacity-100 transition-opacity p-0.5 text-dark-500 hover:text-info rounded hover:bg-dark-750/70"
                     title="複製此欄位值"
                     @click="copySingleValue(field)"
                   >
@@ -304,20 +312,20 @@
               </td>
 
               <!-- 3. Property Cell (data type) -->
-              <td class="w-[15%] py-2.5 px-3.5 align-top border-r border-dark-750/70 select-text">
-                <span class="font-mono text-xxs text-dark-300 break-words leading-relaxed">
+              <td class="py-1 px-3.5 align-top border-r border-dark-700 select-text">
+                <span class="font-mono text-xxs text-dark-300 break-words leading-snug">
                   {{ field.dataType }}
                 </span>
               </td>
 
               <!-- 4. Nullable Cell -->
-              <td class="w-[13%] py-2.5 px-3.5 align-top">
+              <td class="py-1 px-3.5 align-top">
                 <span
                   class="inline-flex items-center px-1.5 py-0.5 rounded text-xxs font-mono font-semibold border"
                   :class="
                     field.nullable
-                      ? 'bg-sky-500/10 text-info border-sky-500/30'
-                      : 'bg-dark-800 text-dark-400 border-dark-700'
+                      ? 'bg-dark-800/50 text-dark-400 border-dark-700/60'
+                      : 'bg-amber-500/10 text-warn border-amber-500/25'
                   "
                 >
                   {{ field.nullable ? 'NULL' : 'NOT NULL' }}

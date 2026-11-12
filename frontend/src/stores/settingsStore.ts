@@ -49,6 +49,12 @@ export interface AppSettings {
   editorBackgroundImageSize: number;
   gridFontFamily: string;
   gridFontSize: number;
+  /**
+   * Shows the generated transaction SQL in a confirmation modal before committing result-grid
+   * changes. Off by default: changes execute directly unless the connection enables its own
+   * modification prompt.
+   */
+  showCommitSqlPreview: boolean;
   erTheme: 'dark' | 'light';
   hiddenTableRules?: FilterRule[];
 }
@@ -96,6 +102,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorBackgroundImageSize: 60,
   gridFontFamily: DEFAULT_GRID_FONT_FAMILY,
   gridFontSize: DEFAULT_GRID_FONT_SIZE,
+  showCommitSqlPreview: false,
   erTheme: 'dark',
   hiddenTableRules: [],
 };
@@ -177,6 +184,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const gridFontSize = ref<number>(
     clampNumber(initial.gridFontSize, MIN_GRID_FONT_SIZE, MAX_GRID_FONT_SIZE, DEFAULT_GRID_FONT_SIZE)
   );
+  const showCommitSqlPreview = ref<boolean>(initial.showCommitSqlPreview ?? false);
   const erTheme = ref<'dark' | 'light'>(initial.erTheme || 'dark');
   const hiddenTableRules = ref<FilterRule[]>(
     initial.hiddenTableRules
@@ -344,6 +352,7 @@ export const useSettingsStore = defineStore('settings', () => {
       editorBackgroundImageSize: editorBackgroundImageSize.value,
       gridFontFamily: gridFontFamily.value,
       gridFontSize: gridFontSize.value,
+      showCommitSqlPreview: showCommitSqlPreview.value,
       erTheme: erTheme.value,
       hiddenTableRules: hiddenTableRules.value,
     };
@@ -380,6 +389,7 @@ export const useSettingsStore = defineStore('settings', () => {
       editorBackgroundImageSize,
       gridFontFamily,
       gridFontSize,
+      showCommitSqlPreview,
       erTheme,
       hiddenTableRules,
     ],
@@ -412,6 +422,7 @@ export const useSettingsStore = defineStore('settings', () => {
     editorBackgroundImageSize.value = DEFAULT_SETTINGS.editorBackgroundImageSize;
     gridFontFamily.value = DEFAULT_SETTINGS.gridFontFamily;
     gridFontSize.value = DEFAULT_SETTINGS.gridFontSize;
+    showCommitSqlPreview.value = DEFAULT_SETTINGS.showCommitSqlPreview;
     erTheme.value = DEFAULT_SETTINGS.erTheme;
     hiddenTableRules.value = [];
   }
@@ -447,6 +458,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setEditorBackgroundImageSize,
     gridFontFamily,
     gridFontSize,
+    showCommitSqlPreview,
     erTheme,
     hiddenTableRules,
     addFilterRule,

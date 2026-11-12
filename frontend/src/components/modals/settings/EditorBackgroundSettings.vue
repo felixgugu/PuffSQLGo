@@ -1,20 +1,17 @@
 <template>
-  <div class="space-y-3 pt-3 border-t border-dark-800">
+  <div class="space-y-3">
     <!-- Enable switch -->
-    <div class="flex items-start justify-between gap-4">
-      <div class="min-w-0">
-        <label class="font-medium text-dark-100 block">
-          {{ $t('settingsModal.editorBackgroundImage') }}
-        </label>
-        <span class="text-xxs text-dark-400">{{ $t('settingsModal.editorBackgroundImageDesc') }}</span>
-      </div>
+    <SettingsRow
+      :label="$t('settingsModal.editorBackgroundImage')"
+      :description="$t('settingsModal.editorBackgroundImageDesc')"
+    >
       <SqSwitch
         :model-value="settingsStore.editorBackgroundImageEnabled"
         :disabled="!hasImage"
         :aria-label="$t('settingsModal.editorBackgroundImage')"
         @update:model-value="settingsStore.setEditorBackgroundImageEnabled($event)"
       />
-    </div>
+    </SettingsRow>
 
     <!-- Preview + picker -->
     <div class="flex items-start space-x-3">
@@ -111,6 +108,7 @@ import { useI18n } from 'vue-i18n';
 import SqButton from '@/components/ui/SqButton.vue';
 import { Image, Trash2 } from '@/components/icons';
 import SqSwitch from '@/components/ui/SqSwitch.vue';
+import SettingsRow from './SettingsRow.vue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import {

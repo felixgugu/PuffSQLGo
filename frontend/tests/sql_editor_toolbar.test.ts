@@ -38,6 +38,7 @@ describe('SQL editor toolbar actions', () => {
       '@run-query="runQuery"',
       '@cancel-query="queryStore.cancelQuery"',
       '@format-sql="formatCode"',
+      '@unformat-sql="unformatCode"',
       '@editor-action="runEditorAction"',
     ]) {
       assert.ok(mainSource.includes(binding), `${binding} should be bound on SqlEditorToolbar`);
@@ -52,6 +53,30 @@ describe('SQL editor toolbar actions', () => {
     assert.doesNotMatch(appSource, /sql-editor-action/, 'App.vue should not relay editor actions');
     assert.doesNotMatch(appSource, /runEditorAction/, 'App.vue should not relay editor actions');
     assert.match(appSource, /mainWorkspaceRef\.value\?\.runQuery\(mode\)/, 'shortcuts still run through AppMain');
+  });
+
+  test('unformat is wired from the toolbar through Monaco and the workspace fallback', () => {
+    const toolbar = readSource('src/components/layout/SqlEditorToolbar.vue');
+    assert.match(toolbar, /emit\('unformat-sql'\)/);
+    assert.match(toolbar, /header\.unformatSqlTooltip/);
+
+    const main = readSource('src/components/layout/AppMain.vue');
+    assert.match(main, /function unformatCode\(\)/);
+    assert.match(main, /monacoRef\.value\.unformatCode\(\)/);
+    assert.match(main, /workspaceStore\.unformatActiveQuery\(\)/);
+
+    const monaco = readSource('src/components/editor/MonacoEditor.vue');
+    assert.match(monaco, /function unformatCode\(\)/);
+    assert.match(monaco, /KeyCode\.KeyM/);
+    assert.match(monaco, /applySqlTransform\('unformat', unformatSql\)/);
+
+    const store = readSource('src/stores/workspaceStore.ts');
+    assert.match(store, /function unformatActiveQuery\(\): void/);
+    assert.match(store, /current\.query = unformatSql\(current\.query\)/);
+
+    const app = readSource('src/App.vue');
+    assert.match(app, /function handleUnformatSql\(\)/);
+    assert.match(app, /e\.key === 'M' \|\| e\.key === 'm'/);
   });
 
   test('Monaco maps each action to the correct command and focuses before triggering', () => {
@@ -189,6 +214,11 @@ describe('SQL editor toolbar placement', () => {
       source,
       /v-for="item in foldingActions"[\s\S]*?emit\('format-sql'\)[\s\S]{0,600}?<\/SqButtonGroup>/,
       'Format SQL lives inside the folding strip'
+    );
+    assert.match(
+      source,
+      /emit\('format-sql'\)[\s\S]{0,600}?emit\('unformat-sql'\)/,
+      'Unformat sits next to Format inside the same strip'
     );
 
     assert.equal(

@@ -85,6 +85,15 @@
       >
         <template #icon><AlignLeft class="w-3.5 h-3.5" /></template>
       </SqButton>
+
+      <!-- Unformat SQL: remove line breaks and collapse whitespace -->
+      <SqButton
+        :aria-label="t('header.unformatSqlTooltip')"
+        v-tooltip.bottom="t('header.unformatSqlTooltip')"
+        @click="emit('unformat-sql')"
+      >
+        <template #icon><Code2 class="w-3.5 h-3.5" /></template>
+      </SqButton>
     </SqButtonGroup>
 
     <!-- Flexible gap keeps the analysis options on the right edge -->
@@ -163,6 +172,7 @@ import SqSelect from '@/components/ui/SqSelect.vue';
 import {
   AlignLeft,
   ClipboardPaste,
+  Code2,
   Copy,
   FoldVertical,
   Gauge,
@@ -184,6 +194,7 @@ const emit = defineEmits<{
   (e: 'run-query', mode: QueryRunMode): void;
   (e: 'cancel-query'): void;
   (e: 'format-sql'): void;
+  (e: 'unformat-sql'): void;
   (e: 'editor-action', action: SqlEditorToolbarAction): void;
 }>();
 

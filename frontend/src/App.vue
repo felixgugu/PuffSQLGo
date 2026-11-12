@@ -271,6 +271,14 @@ function handleFormatSql() {
   }
 }
 
+function handleUnformatSql() {
+  if (mainWorkspaceRef.value) {
+    mainWorkspaceRef.value.unformatCode();
+  } else {
+    workspaceStore.unformatActiveQuery();
+  }
+}
+
 function handleOpenSqlFile() {
   mainWorkspaceRef.value?.openSqlFile();
 }
@@ -338,6 +346,13 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (e.shiftKey && e.altKey && (e.key === 'F' || e.key === 'f')) {
     e.preventDefault();
     handleFormatSql();
+    return;
+  }
+
+  // Shift + Alt + M to unformat (minify) SQL
+  if (e.shiftKey && e.altKey && (e.key === 'M' || e.key === 'm')) {
+    e.preventDefault();
+    handleUnformatSql();
     return;
   }
 

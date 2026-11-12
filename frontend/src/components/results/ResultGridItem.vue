@@ -69,17 +69,45 @@
 
         <div class="h-3.5 w-px bg-dark-750 mx-1 flex-shrink-0"></div>
 
-        <!-- Inline Editing Toolbar: Revert & Commit -->
+        <!-- Inline Editing Toolbar: Add / Delete / Revert / Commit -->
         <div class="flex items-center space-x-1 flex-shrink-0">
           <template v-if="editability.canEdit">
+            <!-- Add Row Button -->
+            <SqButton
+              type="button"
+              :aria-label="$t('results.addRow')"
+              size="sm"
+              tone="ok"
+              variant="outline"
+              :disabled="!canAddRow"
+              @click="handleAddRow"
+              :v-tooltip.top="$t('results.addRowTooltip')"
+            >
+              <template #icon><Plus class="w-3.5 h-3.5" /></template>
+            </SqButton>
+
+            <!-- Delete Row Button -->
+            <SqButton
+              type="button"
+              :aria-label="$t('results.deleteRows')"
+              size="sm"
+              tone="danger"
+              variant="outline"
+              :disabled="!canDeleteRows"
+              @click="handleDeleteRows"
+              :v-tooltip.top="$t('results.deleteRowsTooltip')"
+            >
+              <template #icon><Trash2 class="w-3.5 h-3.5" /></template>
+            </SqButton>
+
             <!-- Revert Button -->
             <SqButton
               type="button"
               :label="$t('common.revert')"
               size="sm"
-              :tone="modifiedCount > 0 ? 'warn' : 'neutral'"
+              :tone="pendingRowCount > 0 ? 'warn' : 'neutral'"
               variant="outline"
-              :disabled="modifiedCount === 0 || !hasRows"
+              :disabled="pendingRowCount === 0"
               @click="handleRevertChanges"
               :v-tooltip.top="$t('results.revertAllTooltip')"
             >
@@ -89,12 +117,13 @@
             <!-- Commit Button -->
             <SqButton
               type="button"
-              :label="modifiedCount > 0 ? $t('results.commitWithCount', { count: modifiedCount }) : $t('common.commit')"
+              :label="pendingRowCount > 0 ? $t('results.commitWithCount', { count: pendingRowCount }) : $t('common.commit')"
               size="sm"
-              :tone="modifiedCount > 0 ? 'ok' : 'neutral'"
-              :variant="modifiedCount > 0 ? 'solid' : 'outline'"
-              :disabled="modifiedCount === 0 || !hasRows"
-              @click="openCommitModal"
+              :tone="pendingRowCount > 0 ? 'ok' : 'neutral'"
+              :variant="pendingRowCount > 0 ? 'solid' : 'outline'"
+              :disabled="pendingRowCount === 0"
+              :loading="commitModal.isExecuting"
+              @click="handleCommitAction"
               :v-tooltip.top="$t('results.commitChangesTooltip')"
               class="font-semibold"
             >
@@ -157,10 +186,27 @@
 
     <!-- Empty State: idle (nothing run yet) vs a statement that matched zero rows -->
     <ResultsEmptyState
-      v-if="!resultSet || resultSet.rows.length === 0"
+      v-if="!resultSet || !hasRows"
       :variant="resultSetColumnCount > 0 ? 'no-rows' : 'idle'"
       :column-count="resultSetColumnCount"
-    />
+    >
+      <!-- A zero-row result keeps its columns, so an editable single table can still accept a
+           first row even though Tabulator is not mounted yet. -->
+      <SqButton
+        v-if="editability.canEdit"
+        type="button"
+        :label="$t('results.addFirstRow')"
+        size="sm"
+        tone="ok"
+        variant="outline"
+        class="mt-3 font-semibold"
+        :disabled="!canAddRow"
+        @click="handleAddRow"
+        :v-tooltip.top="$t('results.addRowTooltip')"
+      >
+        <template #icon><Plus class="w-3.5 h-3.5" /></template>
+      </SqButton>
+    </ResultsEmptyState>
 
     <!-- Tabulator grid -->
     <div
@@ -173,6 +219,7 @@
         '--sqlight-grid-font-size': `${settingsStore.gridFontSize}px`,
       }"
       @contextmenu.prevent
+      @keydown="handleGridKeydown"
       @scroll.capture.passive="handleGridScroll"
     >
       <div ref="gridTableRef" class="w-full h-full"></div>
@@ -242,6 +289,12 @@
               <span class="text-dark-600">|</span>
               <span>Duration: <strong class="text-accent font-mono">{{ displayDuration }}ms</strong></span>
             </template>
+            <template v-if="pendingRowCount > 0">
+              <span class="text-dark-600">|</span>
+              <span class="text-warn font-medium">
+                {{ $t('results.pendingChanges', { inserted: pendingInsertCount, updated: modifiedRowCount, deleted: pendingDeleteCount }) }}
+              </span>
+            </template>
           </div>
         </template>
       </div>
@@ -299,11 +352,43 @@
         <span>{{ $t('results.dataView') }}</span>
       </button>
 
-      <!-- Cell Editing Quick Actions in Context Menu -->
-      <template v-if="isCurrentCellEditable">
+      <!-- Row / Cell Editing Quick Actions in Context Menu -->
+      <template v-if="editability.canEdit">
         <div class="my-1 border-t border-dark-750"></div>
+
         <button
-          v-if="isCurrentCellNullable && contextMenu.cellValue !== null"
+          v-if="canAddRow"
+          @click="handleAddRow"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-dark-750 hover:text-dark-100 flex items-center space-x-2 transition-colors"
+        >
+          <Plus class="w-3.5 h-3.5 text-ok" />
+          <span>{{ $t('results.addRow') }}</span>
+        </button>
+
+        <button
+          v-if="contextMenu.rowData"
+          @click="duplicateContextRow"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-dark-750 hover:text-dark-100 flex items-center space-x-2 transition-colors"
+        >
+          <CopyPlus class="w-3.5 h-3.5 text-info" />
+          <span>{{ $t('results.duplicateRow') }}</span>
+        </button>
+
+        <button
+          v-if="contextMenu.rowData"
+          @click="toggleContextRowDeletion"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-dark-750 flex items-center space-x-2 transition-colors"
+          :class="isContextRowDeleted ? 'text-warn' : 'text-danger'"
+        >
+          <Undo2 v-if="isContextRowDeleted" class="w-3.5 h-3.5" />
+          <Trash2 v-else class="w-3.5 h-3.5" />
+          <span v-if="isContextRowDeleted">{{ $t('results.undoDeleteRow') }}</span>
+          <span v-else-if="isContextRowInserted">{{ $t('results.removeInsertedRow') }}</span>
+          <span v-else>{{ $t('results.deleteRow') }}</span>
+        </button>
+
+        <button
+          v-if="isCurrentCellEditable && isCurrentCellNullable && contextMenu.cellValue !== null"
           @click="setCellNull"
           class="w-full text-left px-2.5 py-1.5 hover:bg-dark-750 hover:text-warn flex items-center space-x-2 transition-colors text-warn"
         >
@@ -311,7 +396,7 @@
           <span>{{ $t('results.setNull') }}</span>
         </button>
         <button
-          v-if="isCurrentCellModified"
+          v-if="isCurrentCellEditable && isCurrentCellModified"
           @click="revertSingleCell"
           class="w-full text-left px-2.5 py-1.5 hover:bg-dark-750 hover:text-warn flex items-center space-x-2 transition-colors text-warn"
         >
@@ -431,7 +516,11 @@
             <strong class="text-accent font-semibold text-xs">[{{ editability.targetTable?.schema }}].[{{ editability.targetTable?.tableName }}]</strong>
           </div>
           <div class="flex items-center space-x-3 text-dark-300 text-xxs">
-            <span>異動列數: <strong class="text-ok font-semibold text-xs">{{ commitModal.rowCount }}</strong> 列</span>
+            <span>新增 <strong class="text-ok font-semibold text-xs">{{ commitModal.insertCount }}</strong> 列</span>
+            <span class="text-dark-600">|</span>
+            <span>更新 <strong class="text-warn font-semibold text-xs">{{ commitModal.updateCount }}</strong> 列</span>
+            <span class="text-dark-600">|</span>
+            <span>刪除 <strong class="text-danger font-semibold text-xs">{{ commitModal.deleteCount }}</strong> 列</span>
             <span class="text-dark-600">|</span>
             <span>異動格數: <strong class="text-warn font-semibold text-xs">{{ commitModal.cellCount }}</strong> 格</span>
           </div>
@@ -441,6 +530,17 @@
         <div v-if="commitModal.error" class="bg-rose-100 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-danger p-3 rounded-md text-xs flex items-start space-x-2 flex-shrink-0">
           <TriangleAlert class="w-3.5 h-3.5 text-danger flex-shrink-0 mt-0.5" />
           <div class="flex-1 font-mono break-all whitespace-pre-wrap">{{ commitModal.error }}</div>
+        </div>
+
+        <!-- Insert coverage warning: a projected subset may omit required table columns. -->
+        <div
+          v-if="commitModal.insertCount > 0 && missingRequiredInsertColumns.length > 0"
+          class="bg-amber-500/10 border border-amber-500/30 text-warn p-2.5 rounded-md text-xxs flex items-start space-x-2 flex-shrink-0"
+        >
+          <TriangleAlert class="w-3.5 h-3.5 text-warn flex-shrink-0 mt-0.5" />
+          <span class="flex-1 leading-relaxed">
+            {{ $t('results.insertMissingRequiredColumns', { columns: missingRequiredInsertColumns.join(', ') }) }}
+          </span>
         </div>
 
         <!-- SQL Preview with Monaco Syntax Highlighting -->
@@ -528,7 +628,7 @@
             :loading="commitModal.isExecuting"
             :disabled="commitModal.isExecuting"
             class="font-semibold"
-            @click="executeCommit"
+            @click="executeCommit()"
           >
             <template #icon><TriangleAlert class="w-3.5 h-3.5" /></template>
           </SqButton>
@@ -542,7 +642,7 @@
             variant="solid"
             :loading="commitModal.isExecuting"
             :disabled="commitModal.isExecuting"
-            @click="executeCommit"
+            @click="executeCommit()"
           >
             <template #icon><Check class="w-3.5 h-3.5" /></template>
           </SqButton>
@@ -554,7 +654,8 @@
 
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch, toRaw, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, shallowRef, computed, reactive, watch, toRaw, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
 import SqButton from '@/components/ui/SqButton.vue';
 import CopyFormatMenu from '@/components/common/CopyFormatMenu.vue';
 import type { CopyFormat } from '@/types/copyFormat';
@@ -563,7 +664,9 @@ import SqChip from '@/components/ui/SqChip.vue';
 import SqDialog from '@/components/ui/SqDialog.vue';
 import {
   Copy,
+  CopyPlus,
   FileText,
+  Plus,
   PlusCircle,
   Edit3,
   Trash2,
@@ -589,6 +692,7 @@ import type {
   TabulatorCellComponent,
   TabulatorColumnComponent,
   TabulatorColumnDefinition,
+  TabulatorRowComponent,
   TabulatorRowData,
 } from 'tabulator-tables';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -601,7 +705,13 @@ import { useGridLayoutStore } from '@/stores/gridLayoutStore';
 import { useDialogWindow } from '@/composables/useDialogWindow';
 import { queryService } from '@/services/queryService';
 import { checkTableEditability } from '@/utils/tableEditability';
-import { generateBatchUpdateScript, type RowModification } from '@/utils/batchUpdateGenerator';
+import type { RowModification } from '@/utils/batchUpdateGenerator';
+import {
+  generateBatchChangesScript,
+  type DeleteRowChange,
+  type InsertColumnValue,
+  type InsertRowChange,
+} from '@/utils/batchChangeGenerator';
 import SqlCodeViewer from '@/components/common/SqlCodeViewer.vue';
 import ResultsEmptyState from '@/components/results/ResultsEmptyState.vue';
 import {
@@ -618,7 +728,9 @@ import {
   applyCellValueClasses,
   buildDataColumn,
   buildRowIndexColumn,
+  isBinaryCellValue,
 } from '@/utils/tabulatorColumns';
+import { activeRangeCell, editCell } from '@/utils/tabulatorGrid';
 import {
   generateInsertStatement,
   generateUpdateStatement,
@@ -629,6 +741,7 @@ import {
   type GenerateDmlParams,
 } from '@/utils/sqlGenerator';
 import type { ResultSet, CellValue, QueryResultTab } from '@/types/query';
+import type { TableSchema } from '@/types/schema';
 
 const props = defineProps<{
   resultSet: ResultSet;
@@ -646,6 +759,7 @@ defineEmits<{
   (e: 'toggle-maximize'): void;
 }>();
 
+const { t } = useI18n();
 const settingsStore = useSettingsStore();
 const queryStore = useQueryStore();
 const workspaceStore = useWorkspaceStore();
@@ -708,10 +822,80 @@ function clearQuickFilter() {
 
 const gridContainerRef = ref<HTMLDivElement | null>(null);
 
+/**
+ * Result rows are `markRaw` positional arrays, so pushing/splicing them is invisible to Vue and to
+ * Tabulator's data watcher. Every structural change bumps this revision and syncs the grid
+ * explicitly. It also lets the empty state react when the first row is inserted into a zero-row
+ * result (Tabulator is not even mounted in that state).
+ */
+const rowRevision = ref(0);
+/** Rows created with "insert row" and not committed yet. */
+const insertedRows = shallowRef<Set<CellValue[]>>(new Set());
+/** Existing rows marked for deletion; they stay visible (struck through) until commit. */
+const deletedRows = shallowRef<Set<CellValue[]>>(new Set());
+/** Row last clicked in the grid, used as the delete target when no range is selected. */
+const activeRowData = shallowRef<CellValue[] | null>(null);
+/**
+ * Shallow snapshot of the row order captured before the first insert/delete. Restoring it on
+ * "revert all" puts deleted rows back in their exact place without a database round trip.
+ */
+let baselineRows: CellValue[][] | null = null;
+
+/**
+ * Pending-state marker stored on the row payload itself. Tabulator may rebuild its internal Row
+ * component around the same data array, and the component also receives row data through several
+ * callbacks; the marker keeps an inserted/deleted row recognisable even if a Set lookup misses.
+ */
+const ROW_STATE_FIELD = '__sqlightRowState';
+type RowState = 'insert' | 'delete' | null;
+
+function rowStateOf(row: CellValue[] | null | undefined): RowState {
+  if (!row) return null;
+  const state = (row as unknown as Record<string, unknown>)[ROW_STATE_FIELD];
+  return state === 'insert' || state === 'delete' ? state : null;
+}
+
+function setRowState(row: CellValue[], state: RowState) {
+  const record = row as unknown as Record<string, unknown>;
+  if (state) {
+    Object.defineProperty(record, ROW_STATE_FIELD, {
+      value: state,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  } else {
+    delete record[ROW_STATE_FIELD];
+  }
+}
+
+function isPendingInsert(row: CellValue[] | null | undefined): boolean {
+  return !!row && (insertedRows.value.has(row) || rowStateOf(row) === 'insert');
+}
+
+function isPendingDelete(row: CellValue[] | null | undefined): boolean {
+  return !!row && (deletedRows.value.has(row) || rowStateOf(row) === 'delete');
+}
+
+/** Number of rows in the given pending state, counting both the Set and the row markers. */
+function countPendingRows(kind: 'insert' | 'delete'): number {
+  const set = kind === 'insert' ? insertedRows.value : deletedRows.value;
+  const seen = new Set<CellValue[]>(set);
+  for (const row of props.resultSet?.rows ?? []) {
+    if (kind === 'insert' ? isPendingInsert(row) : isPendingDelete(row)) {
+      seen.add(row);
+    }
+  }
+  return seen.size;
+}
+
 // Tabulator must not hold a Vue reactive proxy for the row data: with wide result sets the proxy
 // cost is paid on every cell read. Raw arrays keep rendering on plain objects while all
 // modification tracking stays in `modifiedCells`.
 const gridRowData = computed<CellValue[][]>(() => {
+  // The revision is only a dependency: a structural mutation must invalidate this computed so the
+  // explicit `grid.sync()` that follows reads the new row array.
+  rowRevision.value;
   const rows = props.resultSet?.rows;
   return rows ? (toRaw(rows) as CellValue[][]) : [];
 });
@@ -811,9 +995,10 @@ async function handleRefresh() {
   try {
     const res = await queryStore.refreshTabResultSet(tab.id, props.setIndex);
     if (res.success) {
-      modifiedCells.value = {};
+      clearPendingState();
       resetGridState();
       grid.redraw(true);
+      applyRowStateClasses();
       workspaceStore.showToast(`資料已重新整理（共 ${res.rowCount.toLocaleString()} 筆）`, 'success', 2000);
     } else {
       workspaceStore.showToast(`重新整理失敗: ${res.error || '未知錯誤'}`, 'error', 3500);
@@ -838,22 +1023,68 @@ const editability = computed(() => {
   });
 });
 
-// Set of lowercased identity column names
-const identityColumnNames = computed<Set<string>>(() => {
+/**
+ * Full schema of the target table. The editability check only reports the key shape; inserting a
+ * row also needs identity / computed / rowversion flags and default definitions.
+ */
+const targetTableSchema = computed<TableSchema | null>(() => {
   const tab = currentTab.value;
+  const target = editability.value.targetTable;
+  if (!target) return null;
+
   const connId = tab?.connectionId || connectionStore.activeConnectionId || undefined;
   const db = tab?.database || connectionStore.activeDatabase || undefined;
-  if (!connId || !db || !editability.value.targetTable) return new Set();
+  if (!connId || !db) return null;
 
-  const target = editability.value.targetTable;
-  const tableSchema =
+  return (
     schemaStore.getTable(target.tableName, connId, db) ||
-    schemaStore.getTable(`${target.schema}.${target.tableName}`, connId, db);
-  if (!tableSchema) return new Set();
-
-  return new Set(
-    tableSchema.columns.filter((c) => c.isIdentity).map((c) => c.name.toLowerCase())
+    schemaStore.getTable(`${target.schema}.${target.tableName}`, connId, db) ||
+    null
   );
+});
+
+function tableColumnFor(name: string) {
+  const lower = name.toLowerCase();
+  return targetTableSchema.value?.columns.find((column) => column.name.toLowerCase() === lower);
+}
+
+// Set of lowercased identity column names
+const identityColumnNames = computed<Set<string>>(() => {
+  return new Set(
+    (targetTableSchema.value?.columns ?? [])
+      .filter((c) => c.isIdentity)
+      .map((c) => c.name.toLowerCase())
+  );
+});
+
+/** Identity, computed and rowversion values are produced by SQL Server; never write them. */
+const generatedColumnNames = computed<Set<string>>(() => {
+  return new Set(
+    (targetTableSchema.value?.columns ?? [])
+      .filter((c) => c.isIdentity || c.isComputed || c.isRowVersion)
+      .map((c) => c.name.toLowerCase())
+  );
+});
+
+/**
+ * Required table columns the query does not project. The commit preview warns about them because
+ * the INSERT can only write columns the result set knows about.
+ */
+const missingRequiredInsertColumns = computed<string[]>(() => {
+  if (!editability.value.canEdit) return [];
+
+  const projected = new Set((props.resultSet?.columns ?? []).map((c) => c.name.toLowerCase()));
+  return (targetTableSchema.value?.columns ?? [])
+    .filter(
+      (c) =>
+        !c.isNullable &&
+        !c.isIdentity &&
+        !c.isComputed &&
+        !c.isRowVersion &&
+        !c.defaultDefinition
+    )
+    .filter((c) => !projected.has(c.name.toLowerCase()))
+    .map((c) => c.name);
 });
 
 // Set of lowercased primary key column names
@@ -891,12 +1122,23 @@ const primaryKeyColumnNames = computed<Set<string>>(() => {
   return pkNames;
 });
 
-/** Read-only columns (primary key / identity) can never be edited inline. */
-function isColumnEditable(colIdx: number): boolean {
+/**
+ * Read-only columns: generated values (identity / computed / rowversion) are never editable, and
+ * existing primary keys stay immutable so the commit WHERE clause cannot lose its target. A newly
+ * inserted row is the exception: a natural PK has to be typed by the user before it can be written.
+ */
+function isColumnEditable(colIdx: number, rowData?: CellValue[] | null): boolean {
   const column = props.resultSet?.columns[colIdx];
   if (!column || !editability.value.canEdit) return false;
+
   const name = column.name.toLowerCase();
-  return !primaryKeyColumnNames.value.has(name) && !identityColumnNames.value.has(name);
+  if (generatedColumnNames.value.has(name)) return false;
+  // Expression / alias columns in the projection are not writable table columns.
+  if (!tableColumnFor(column.name)) return false;
+  if (isPendingDelete(rowData)) return false;
+  if (isPendingInsert(rowData)) return true;
+
+  return !primaryKeyColumnNames.value.has(name);
 }
 
 // Cell modification tracking
@@ -908,12 +1150,39 @@ interface CellModification {
   originalValue: CellValue;
   currentValue: CellValue;
   rowRef: CellValue[];
-  pkWhere: Record<string, CellValue>;
 }
 
 const modifiedCells = ref<Record<string, CellModification>>({});
 const modifiedCount = computed(() => Object.keys(modifiedCells.value).length);
-const hasRows = computed(() => (props.resultSet?.rows?.length ?? 0) > 0);
+/** Cell edits that will actually become UPDATE statements (not on inserted / deleted rows). */
+const activeModifiedCells = computed(() =>
+  Object.values(modifiedCells.value).filter(
+    (mod) => !isPendingInsert(mod.rowRef) && !isPendingDelete(mod.rowRef)
+  )
+);
+const activeModifiedCellCount = computed(() => activeModifiedCells.value.length);
+/** Distinct rows with at least one pending UPDATE. */
+const modifiedRowCount = computed(
+  () => new Set(activeModifiedCells.value.map((mod) => mod.rowKey)).size
+);
+const pendingInsertCount = computed(() => {
+  // Structural changes are invisible to Vue unless the revision is read.
+  rowRevision.value;
+  return countPendingRows('insert');
+});
+const pendingDeleteCount = computed(() => {
+  rowRevision.value;
+  return countPendingRows('delete');
+});
+/** Total affected rows across inserts, updates and deletes (drives the commit button). */
+const pendingRowCount = computed(
+  () => modifiedRowCount.value + pendingInsertCount.value + pendingDeleteCount.value
+);
+const hasRows = computed(() => {
+  // Structural row mutations do not trigger Vue on their own (the row array is markRaw).
+  rowRevision.value;
+  return (props.resultSet?.rows?.length ?? 0) > 0;
+});
 /**
  * Separates "this tab has never run anything" from "the statement matched zero rows". A query
  * that returns no rows still ships its column metadata, so an empty grid with columns is a
@@ -943,6 +1212,9 @@ function getRowPkKey(row: CellValue[] | undefined): string {
 
 function isCellModified(rowData: CellValue[] | undefined, colIdx: number): boolean {
   if (modifiedCount.value === 0 || !rowData) return false;
+  // A row pending deletion shows its own red styling; its tracked edits stay hidden until the
+  // deletion is cancelled or reverted.
+  if (isPendingDelete(rowData)) return false;
   const rowKey = getRowPkKey(rowData);
   if (!rowKey) return false;
   return `${rowKey}___col_${colIdx}` in modifiedCells.value;
@@ -958,6 +1230,10 @@ function recordModification(
   previousValue: CellValue,
   nextValue: CellValue
 ): void {
+  // A pending insert has no primary key yet, and its whole row is read at commit time, so there
+  // is nothing useful to track per cell.
+  if (isPendingInsert(rowData)) return;
+
   const rowKey = getRowPkKey(rowData);
   if (!rowKey || !props.resultSet) return;
 
@@ -972,16 +1248,6 @@ function recordModification(
     return;
   }
 
-  const pkWhere: Record<string, CellValue> = {};
-  for (const pkCol of editability.value.pkColumns) {
-    const pColIdx = props.resultSet.columns.findIndex(
-      (c) => c.name.toLowerCase() === pkCol.toLowerCase()
-    );
-    if (pColIdx >= 0) {
-      pkWhere[pkCol] = rowData[pColIdx] ?? null;
-    }
-  }
-
   modifiedCells.value = {
     ...modifiedCells.value,
     [cellKey]: {
@@ -992,16 +1258,69 @@ function recordModification(
       originalValue,
       currentValue: nextValue,
       rowRef: rowData,
-      pkWhere,
     },
   };
 }
 
-// Clear modified cells when switching result sets or tabs
+/** Drops every pending cell edit and structural change. */
+function clearPendingState() {
+  // Clear the markers on the rows we tracked, whichever result set is currently displayed.
+  for (const row of insertedRows.value) setRowState(row, null);
+  for (const row of deletedRows.value) setRowState(row, null);
+  modifiedCells.value = {};
+  insertedRows.value = new Set();
+  deletedRows.value = new Set();
+  baselineRows = null;
+  activeRowData.value = null;
+  rowRevision.value += 1;
+}
+
+/**
+ * Re-applies the pending insert/delete classes to every rendered row. `rowFormatter` normally does
+ * this, but a cell editor, a rejected replaceData or a virtual re-render can skip it; the row is
+ * still recognisable from its marker, so painting here makes the state deterministic.
+ */
+function applyRowStateClasses() {
+  const table = grid.table.value;
+  if (!table) return;
+
+  for (const row of table.getRows()) {
+    // Do not call getElement(): it would materialise an element for every off-screen row.
+    const element = (row as unknown as { element?: HTMLElement }).element;
+    if (!element) continue;
+    const data = row.getData() as unknown as CellValue[];
+    element.classList.toggle('sqlight-row-inserted', isPendingInsert(data));
+    element.classList.toggle('sqlight-row-pending-delete', isPendingDelete(data));
+  }
+}
+
+/** Pushes a structural row change to both Vue (revision) and Tabulator (replaceData). */
+async function syncGridRows() {
+  rowRevision.value += 1;
+  clearCellSelection();
+  await nextTick();
+  await grid.sync();
+  applyRowStateClasses();
+}
+
+/** Captures the untouched row order before the first insert/delete so revert can restore it. */
+function captureBaselineRows() {
+  if (baselineRows || !props.resultSet) return;
+  baselineRows = props.resultSet.rows.slice();
+}
+
+function dropModificationsForRow(row: CellValue[]) {
+  const entries = Object.entries(modifiedCells.value).filter(([, mod]) => mod.rowRef !== row);
+  if (entries.length !== Object.keys(modifiedCells.value).length) {
+    modifiedCells.value = Object.fromEntries(entries);
+  }
+}
+
+// Clear pending work when switching result sets or tabs
 watch(
   () => [props.resultSet, queryStore.activeResultTabId],
   () => {
-    modifiedCells.value = {};
+    clearPendingState();
   }
 );
 
@@ -1013,6 +1332,9 @@ const commitModal = reactive({
   sql: '',
   rowCount: 0,
   cellCount: 0,
+  insertCount: 0,
+  updateCount: 0,
+  deleteCount: 0,
   confirmStep: 1 as 1 | 2,
 });
 
@@ -1022,91 +1344,340 @@ function closeCommitModal() {
   commitModal.error = '';
 }
 
-function handleRevertChanges() {
-  if (!hasRows.value) {
-    workspaceStore.showToast('目前無資料可供退回', 'info', 2000);
+async function handleRevertChanges() {
+  if (!props.resultSet || pendingRowCount.value === 0) {
+    workspaceStore.showToast('目前無未提交的異動可供退回', 'info', 2000);
     return;
   }
-  if (modifiedCount.value === 0 || !props.resultSet) return;
 
+  const count = pendingRowCount.value;
+  const rows = props.resultSet.rows;
+  const hadStructuralChanges =
+    pendingInsertCount.value > 0 || pendingDeleteCount.value > 0;
+
+  // Restore cell values first; deleted rows keep their pending cell edits dropped at delete time.
   for (const mod of Object.values(modifiedCells.value)) {
     mod.rowRef[mod.colIdx] = mod.originalValue;
   }
-  const count = modifiedCount.value;
-  modifiedCells.value = {};
-  grid.redraw(true);
-  workspaceStore.showToast(`已退回 ${count} 格修改，資料已還原`, 'info', 2000);
+
+  // Put deleted rows back exactly where they were and drop inserted rows.
+  if (baselineRows) {
+    rows.splice(0, rows.length, ...baselineRows);
+  }
+
+  clearPendingState();
+  await nextTick();
+
+  if (hadStructuralChanges) {
+    await grid.sync();
+  } else {
+    grid.redraw(true);
+  }
+  applyRowStateClasses();
+
+  workspaceStore.showToast(`已退回 ${count} 筆未提交的異動，資料已還原`, 'info', 2200);
 }
 
-function openCommitModal() {
-  if (!hasRows.value) {
-    workspaceStore.showToast('目前無資料可供提交', 'info', 2000);
-    return;
+/** Primary key values of one row, as the WHERE condition for UPDATE / DELETE. */
+function buildPkWhere(row: CellValue[]): Record<string, CellValue> {
+  const where: Record<string, CellValue> = {};
+  if (!props.resultSet) return where;
+
+  for (const pkCol of editability.value.pkColumns) {
+    const index = props.resultSet.columns.findIndex(
+      (column) => column.name.toLowerCase() === pkCol.toLowerCase()
+    );
+    if (index >= 0) {
+      where[pkCol] = row[index] ?? null;
+    }
   }
-  if (modifiedCount.value === 0 || !editability.value.canEdit || !editability.value.targetTable) return;
+
+  return where;
+}
+
+/**
+ * Writable columns of an inserted row. Identity / computed / rowversion values never leave the
+ * server, aliases are not real table columns, and an untouched column with a server default is
+ * omitted so the default applies instead of an explicit NULL.
+ */
+function buildInsertValues(row: CellValue[]): InsertColumnValue[] {
+  const values: InsertColumnValue[] = [];
+  if (!props.resultSet) return values;
+
+  props.resultSet.columns.forEach((column, index) => {
+    const schemaColumn = tableColumnFor(column.name);
+    if (!schemaColumn) return;
+    if (schemaColumn.isIdentity || schemaColumn.isComputed || schemaColumn.isRowVersion) return;
+
+    const value = row[index] ?? null;
+    if (value === null && schemaColumn.defaultDefinition) return;
+
+    // Use the table's column name, not the result alias, so `SELECT UserName AS Name` still
+    // writes the real column.
+    values.push({ column: schemaColumn.name, value });
+  });
+
+  return values;
+}
+
+/** Blocks commits that the database would reject for a predictable reason. */
+function validateInsertRows(rows: CellValue[][]): string | null {
+  if (!props.resultSet) return null;
+
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const keyValues: CellValue[] = [];
+    const missingKeys: string[] = [];
+
+    for (const pkCol of editability.value.pkColumns) {
+      const index = props.resultSet.columns.findIndex(
+        (column) => column.name.toLowerCase() === pkCol.toLowerCase()
+      );
+      if (index < 0) continue;
+
+      const schemaColumn = tableColumnFor(pkCol);
+      if (schemaColumn?.isIdentity || schemaColumn?.isComputed || schemaColumn?.isRowVersion) {
+        continue;
+      }
+
+      const value = row[index] ?? null;
+      if (value === null) {
+        missingKeys.push(pkCol);
+      } else {
+        keyValues.push(value);
+      }
+    }
+
+    if (missingKeys.length > 0) {
+      return t('results.insertPkRequired', { columns: missingKeys.join(', ') });
+    }
+
+    const missingRequired: string[] = [];
+    props.resultSet.columns.forEach((column, index) => {
+      const schemaColumn = tableColumnFor(column.name);
+      if (!schemaColumn) return;
+      if (
+        schemaColumn.isNullable ||
+        schemaColumn.isIdentity ||
+        schemaColumn.isComputed ||
+        schemaColumn.isRowVersion ||
+        schemaColumn.defaultDefinition
+      ) {
+        return;
+      }
+      if ((row[index] ?? null) === null) {
+        missingRequired.push(column.name);
+      }
+    });
+
+    if (missingRequired.length > 0) {
+      return t('results.insertRequiredMissing', { columns: missingRequired.join(', ') });
+    }
+
+    if (keyValues.length === 0) continue;
+
+    const key = JSON.stringify(keyValues);
+    if (seen.has(key)) {
+      return t('results.insertPkDuplicate', {
+        value: keyValues.map((value) => String(value)).join(', '),
+      });
+    }
+    seen.add(key);
+  }
+
+  return null;
+}
+
+/**
+ * Builds and validates the change plan without opening the preview modal. Returns false when the
+ * plan cannot be committed (the reason has already been surfaced to the user).
+ */
+function buildCommitPlan(): boolean {
+  if (!editability.value.canEdit || !editability.value.targetTable || isRefreshing.value) {
+    return false;
+  }
+  if (pendingRowCount.value === 0) {
+    workspaceStore.showToast('目前無未提交的異動可供提交', 'info', 2000);
+    return false;
+  }
 
   const rowsMap = new Map<string, RowModification>();
   for (const mod of Object.values(modifiedCells.value)) {
+    // Defensive: modifications on rows that were deleted or are pending inserts never become UPDATEs.
+    if (isPendingDelete(mod.rowRef) || isPendingInsert(mod.rowRef)) continue;
+
     let rm = rowsMap.get(mod.rowKey);
     if (!rm) {
       rm = {
         rowIndex: mod.originalRowIndex,
         updates: {},
-        pkWhere: mod.pkWhere,
+        pkWhere: buildPkWhere(mod.rowRef),
       };
       rowsMap.set(mod.rowKey, rm);
     }
-    rm.updates[mod.colName] = mod.currentValue;
+    // Resolve result aliases back to the real table column before generating the UPDATE.
+    rm.updates[tableColumnFor(mod.colName)?.name ?? mod.colName] = mod.currentValue;
   }
 
-  const modifications = Array.from(rowsMap.values());
+  const updates = Array.from(rowsMap.values());
+  const insertRows = collectPendingRows('insert');
+  const deleteRows = collectPendingRows('delete');
+  const inserts: InsertRowChange[] = insertRows.map((row) => ({
+    values: buildInsertValues(row),
+  }));
+  const deletes: DeleteRowChange[] = deleteRows.map((row) => ({
+    pkWhere: buildPkWhere(row),
+  }));
+
+  const insertError = validateInsertRows(insertRows);
+  if (insertError) {
+    workspaceStore.showToast(insertError, 'error', 4000);
+    return false;
+  }
+
+  if (updates.length + inserts.length + deletes.length === 0) {
+    workspaceStore.showToast('目前無未提交的異動可供提交', 'info', 2000);
+    return false;
+  }
+
   const tab = currentTab.value;
   const db = tab?.database || connectionStore.activeDatabase || undefined;
 
   try {
-    const sql = generateBatchUpdateScript({
+    const sql = generateBatchChangesScript({
       tableName: editability.value.targetTable.tableName,
       schema: editability.value.targetTable.schema,
       database: db,
-      modifications,
+      updates,
+      inserts,
+      deletes,
     });
 
     commitModal.sql = sql;
-    commitModal.rowCount = modifications.length;
-    commitModal.cellCount = modifiedCount.value;
+    commitModal.rowCount = updates.length + inserts.length + deletes.length;
+    commitModal.updateCount = updates.length;
+    commitModal.insertCount = inserts.length;
+    commitModal.deleteCount = deletes.length;
+    commitModal.cellCount = activeModifiedCellCount.value;
     commitModal.error = '';
     commitModal.isExecuting = false;
-    commitModal.confirmStep = 1;
-    commitModal.visible = true;
+    return true;
   } catch (err: any) {
-    workspaceStore.showToast(`產生更新語法失敗: ${err?.message || err}`, 'error', 3500);
+    workspaceStore.showToast(`產生異動語法失敗: ${err?.message || err}`, 'error', 3500);
+    return false;
   }
 }
 
-async function executeCommit() {
+/** Opens the preview + confirmation modal (the existing commit flow). */
+function openCommitModal() {
+  if (!buildCommitPlan()) return;
+  commitModal.confirmStep = 1;
+  commitModal.visible = true;
+}
+
+/**
+ * Commit button entry point. The SQL preview is opt-in; by default the transaction executes
+ * immediately. A connection that enables its own modification prompt always keeps the review
+ * modal, because that setting is an explicit safety opt-in.
+ */
+async function handleCommitAction() {
+  if (settingsStore.showCommitSqlPreview || requiresModificationPrompt.value) {
+    openCommitModal();
+    return;
+  }
+
+  if (!buildCommitPlan()) return;
+  await executeCommit(true);
+}
+
+/** Reloads the result set after an INSERT / DELETE so identity and default values are accurate. */
+async function reloadResultAfterCommit(): Promise<boolean> {
+  const tab = currentTab.value;
+  if (!tab) return false;
+
+  try {
+    const res = await queryStore.refreshTabResultSet(tab.id, props.setIndex);
+    if (!res.success) return false;
+
+    resetGridState();
+    await nextTick();
+    await grid.sync();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A direct commit has no visible modal, so failures have to surface as a toast. */
+function reportCommitError(message: string, direct: boolean) {
+  if (!direct) {
+    commitModal.error = message;
+    return;
+  }
+  workspaceStore.showToast(t('results.commitFailed', { error: message }), 'error', 6000);
+}
+
+async function executeCommit(direct = false) {
   const tab = currentTab.value;
   const connId = tab?.connectionId || connectionStore.activeConnectionId || undefined;
   const db = tab?.database || connectionStore.activeDatabase || undefined;
 
   if (!connId || !db) {
-    commitModal.error = '無法取得當前連線或資料庫資訊';
+    reportCommitError('無法取得當前連線或資料庫資訊', direct);
     return;
   }
 
   commitModal.isExecuting = true;
   commitModal.error = '';
 
-  try {
-    await queryService.executeQuery(connId, db, commitModal.sql);
+  const insertCount = commitModal.insertCount;
+  const updateCount = commitModal.updateCount;
+  const deleteCount = commitModal.deleteCount;
+  const hadStructuralChanges = insertCount + deleteCount > 0;
 
-    const rowCnt = commitModal.rowCount;
-    const cellCnt = commitModal.cellCount;
-    modifiedCells.value = {};
-    grid.redraw(true);
+  try {
+    const result = await queryService.executeQuery(connId, db, commitModal.sql);
+
+    // The Go query facade reports SQL Server failures as result messages with a nil Go error, so a
+    // resolved promise is not proof that the transaction committed.
+    const sqlError = result.messages?.find((message) => message.level === 'error');
+    if (sqlError) {
+      reportCommitError(sqlError.message, direct);
+      return;
+    }
+
+    const cancelled = result.messages?.some(
+      (message) =>
+        message.level === 'warning' && message.message.toLowerCase().includes('cancel')
+    );
+    if (cancelled) {
+      reportCommitError(t('results.commitCancelled'), direct);
+      return;
+    }
+
+    clearPendingState();
     closeCommitModal();
-    workspaceStore.showToast(`成功提交！已更新 ${rowCnt} 筆資料 (共 ${cellCnt} 格)`, 'success', 3000);
+
+    const reloaded = hadStructuralChanges ? await reloadResultAfterCommit() : true;
+    if (!hadStructuralChanges) {
+      grid.redraw(true);
+    }
+
+    if (reloaded) {
+      workspaceStore.showToast(
+        t('results.commitMixedSuccess', {
+          inserted: insertCount,
+          updated: updateCount,
+          deleted: deleteCount,
+        }),
+        'success',
+        3200
+      );
+    } else {
+      workspaceStore.showToast(t('results.commitRefreshFailed'), 'warning', 5000);
+    }
   } catch (err: any) {
-    commitModal.error = err?.message || String(err);
+    reportCommitError(err?.message || String(err), direct);
   } finally {
     commitModal.isExecuting = false;
   }
@@ -1127,7 +1698,7 @@ const isCurrentCellEditable = computed(() => {
   if (!editability.value.canEdit || !contextMenu.visible) return false;
   const colIdx = getColIndex(contextMenu.colId);
   if (colIdx === undefined || !props.resultSet) return false;
-  return isColumnEditable(colIdx);
+  return isColumnEditable(colIdx, contextMenu.rowData);
 });
 
 const isCurrentCellNullable = computed(() => {
@@ -1213,15 +1784,309 @@ const {
   clearCellSelection,
 } = selection;
 
+// --------------------------------------------------------------------------
+// Row insert / delete
+// --------------------------------------------------------------------------
+
+const canAddRow = computed(
+  () => editability.value.canEdit && resultSetColumnCount.value > 0 && !isRefreshing.value
+);
+
+/** Deleting targets the active range when one exists, otherwise the row last clicked. */
+const canDeleteRows = computed(
+  () =>
+    editability.value.canEdit &&
+    !isRefreshing.value &&
+    (hasSelection.value || activeRowData.value !== null)
+);
+
+const isContextRowDeleted = computed(() => isPendingDelete(contextMenu.rowData));
+
+const isContextRowInserted = computed(() => isPendingInsert(contextMenu.rowData));
+
+/**
+ * All pending rows of one kind. Live grid rows are preferred because they carry the latest edits;
+ * Set members cover rows that are filtered out of the display or no longer mounted.
+ */
+function collectPendingRows(kind: 'insert' | 'delete'): CellValue[][] {
+  const rows: CellValue[][] = [];
+  const seen = new Set<CellValue[]>();
+  const matches = (row: CellValue[]) =>
+    kind === 'insert' ? isPendingInsert(row) : isPendingDelete(row);
+  const add = (row: CellValue[]) => {
+    if (!seen.has(row) && matches(row)) {
+      seen.add(row);
+      rows.push(row);
+    }
+  };
+
+  for (const row of grid.table.value?.getRows() ?? []) {
+    add(row.getData() as unknown as CellValue[]);
+  }
+  for (const row of kind === 'insert' ? insertedRows.value : deletedRows.value) {
+    add(row);
+  }
+
+  return rows;
+}
+
+/** Rows covered by the current range selection, falling back to the last clicked row. */
+function collectTargetRows(): CellValue[][] {
+  const table = grid.table.value;
+  const resultRows = new Set(props.resultSet?.rows ?? []);
+  const rows: CellValue[][] = [];
+  const seen = new Set<CellValue[]>();
+  const add = (row: CellValue[]) => {
+    // A range may outlive a row that was just removed (e.g. an inserted row deleted again).
+    if (!resultRows.has(row) || seen.has(row)) return;
+    seen.add(row);
+    rows.push(row);
+  };
+
+  if (table) {
+    for (const range of table.getRanges()) {
+      for (const row of range.getRows()) {
+        add(row.getData() as unknown as CellValue[]);
+      }
+    }
+  }
+
+  if (rows.length === 0 && activeRowData.value) {
+    add(activeRowData.value);
+  }
+
+  return rows;
+}
+
+/** Marks an existing row for deletion, or drops an inserted row that was never committed. */
+function markRowDeleted(row: CellValue[]) {
+  if (!props.resultSet) return;
+
+  if (isPendingInsert(row)) {
+    removeInsertedRow(row);
+    return;
+  }
+
+  if (isPendingDelete(row)) return;
+
+  captureBaselineRows();
+  // Cell edits stay tracked (but hidden) so cancelling the deletion restores them; a committed
+  // DELETE supersedes them.
+  setRowState(row, 'delete');
+  deletedRows.value = new Set(deletedRows.value).add(row);
+}
+
+/** Puts a deleted row back at its original place in the baseline order. */
+function restoreDeletedRow(row: CellValue[]) {
+  const rows = props.resultSet?.rows;
+  if (!rows || !isPendingDelete(row)) return;
+
+  const base = baselineRows ?? rows;
+  const baseIndex = base.indexOf(row);
+  let insertAt = rows.length;
+
+  if (baseIndex >= 0) {
+    insertAt = 0;
+    for (let i = baseIndex - 1; i >= 0; i--) {
+      const previousIndex = rows.indexOf(base[i]!);
+      if (previousIndex >= 0) {
+        insertAt = previousIndex + 1;
+        break;
+      }
+    }
+  }
+
+  rows.splice(insertAt, 0, row);
+  setRowState(row, null);
+  const next = new Set(deletedRows.value);
+  next.delete(row);
+  deletedRows.value = next;
+}
+
+function removeInsertedRow(row: CellValue[]) {
+  const rows = props.resultSet?.rows;
+  if (!rows) return;
+
+  const index = rows.indexOf(row);
+  if (index >= 0) {
+    rows.splice(index, 1);
+  }
+
+  setRowState(row, null);
+  const next = new Set(insertedRows.value);
+  next.delete(row);
+  insertedRows.value = next;
+  dropModificationsForRow(row);
+  if (activeRowData.value === row) {
+    activeRowData.value = null;
+  }
+}
+
+/** Scrolls to a pending row and opens the first empty writable cell (fallback: first writable). */
+async function focusRowEditor(row: CellValue[]) {
+  const table = grid.table.value;
+  const tableRow = table
+    ?.getRows()
+    .find((candidate) => (candidate.getData() as unknown) === row);
+  if (!table || !tableRow || !props.resultSet) return;
+
+  table.scrollToRow(tableRow, 'bottom', false);
+
+  const columns = props.resultSet.columns;
+  const isEmptyEditable = (index: number) =>
+    isColumnEditable(index, row) && (row[index] ?? null) === null;
+
+  // A new primary key is the one value the row cannot be committed without, so prefer it.
+  let target = columns.findIndex(
+    (column, index) =>
+      isEmptyEditable(index) && primaryKeyColumnNames.value.has(column.name.toLowerCase())
+  );
+  if (target < 0) {
+    target = columns.findIndex((_, index) => isEmptyEditable(index));
+  }
+  if (target < 0) {
+    target = columns.findIndex((_, index) => isColumnEditable(index, row));
+  }
+  if (target < 0) return;
+
+  try {
+    const cell = tableRow.getCell(String(target));
+    if (cell) editCell(table, cell);
+  } catch {
+    // A column outside the rendered viewport may refuse the editor; the row is still added.
+  }
+}
+
+async function handleAddRow() {
+  if (!canAddRow.value || !props.resultSet) return;
+
+  contextMenu.visible = false;
+  // A new row must be visible: the quick filter could hide its all-NULL values.
+  clearQuickFilter();
+
+  const row: CellValue[] = props.resultSet.columns.map(() => null);
+  captureBaselineRows();
+  setRowState(row, 'insert');
+  props.resultSet.rows.push(row);
+  insertedRows.value = new Set(insertedRows.value).add(row);
+
+  await syncGridRows();
+  await focusRowEditor(row);
+
+  workspaceStore.showToast(t('results.rowAdded'), 'info', 2200);
+}
+
+/**
+ * Duplicates the values of an existing row directly below it. Generated columns and every primary
+ * key column are cleared so the copy can receive its own key; binary placeholders cannot be
+ * written back, so they are cleared as well.
+ */
+async function handleDuplicateRow(sourceRow: CellValue[]) {
+  if (!canAddRow.value || !props.resultSet) return;
+
+  contextMenu.visible = false;
+  clearQuickFilter();
+
+  const generated = generatedColumnNames.value;
+  const primaryKeys = primaryKeyColumnNames.value;
+  const row: CellValue[] = props.resultSet.columns.map((column, index) => {
+    const name = column.name.toLowerCase();
+    if (generated.has(name) || primaryKeys.has(name)) return null;
+
+    const value = sourceRow[index] ?? null;
+    return isBinaryCellValue(value) ? null : value;
+  });
+
+  captureBaselineRows();
+  setRowState(row, 'insert');
+  const sourceIndex = props.resultSet.rows.indexOf(sourceRow);
+  const insertAt = sourceIndex >= 0 ? sourceIndex + 1 : props.resultSet.rows.length;
+  props.resultSet.rows.splice(insertAt, 0, row);
+  insertedRows.value = new Set(insertedRows.value).add(row);
+
+  await syncGridRows();
+  await focusRowEditor(row);
+
+  workspaceStore.showToast(t('results.rowDuplicated'), 'info', 2400);
+}
+
+async function duplicateContextRow() {
+  const row = contextMenu.rowData;
+  if (row) await handleDuplicateRow(row);
+}
+
+async function handleDeleteRows() {
+  if (!canDeleteRows.value) {
+    if (editability.value.canEdit) {
+      workspaceStore.showToast(t('results.noRowSelected'), 'info', 2000);
+    }
+    return;
+  }
+
+  const targets = collectTargetRows();
+  if (targets.length === 0) {
+    workspaceStore.showToast(t('results.noRowSelected'), 'info', 2000);
+    return;
+  }
+
+  // Pressing delete on an already marked selection restores it instead of doing nothing.
+  const allDeleted = targets.every((row) => isPendingDelete(row));
+  if (allDeleted) {
+    targets.forEach((row) => restoreDeletedRow(row));
+    await syncGridRows();
+    workspaceStore.showToast(t('results.rowDeletesRestored', { count: targets.length }), 'info', 2200);
+    return;
+  }
+
+  targets.forEach((row) => markRowDeleted(row));
+  await syncGridRows();
+  workspaceStore.showToast(t('results.rowsDeleted', { count: targets.length }), 'info', 2400);
+}
+
+async function toggleContextRowDeletion() {
+  const row = contextMenu.rowData;
+  contextMenu.visible = false;
+  if (!row || !editability.value.canEdit) return;
+
+  if (isPendingInsert(row)) {
+    removeInsertedRow(row);
+    await syncGridRows();
+    workspaceStore.showToast(t('results.insertedRowRemoved'), 'info', 1800);
+    return;
+  }
+
+  if (isPendingDelete(row)) {
+    restoreDeletedRow(row);
+    await syncGridRows();
+    workspaceStore.showToast(t('results.rowDeletesRestored', { count: 1 }), 'info', 1800);
+    return;
+  }
+
+  markRowDeleted(row);
+  await syncGridRows();
+  workspaceStore.showToast(t('results.rowsDeleted', { count: 1 }), 'info', 2000);
+}
+
 // Double-click copies the cell value on read-only cells (read-only result sets, PK/Identity
 // columns). Editable cells keep their double-click-to-edit behaviour: Tabulator opens its editor
 // on the same gesture, so the copy handler has to yield to it.
 function handleCellDoubleClick(_event: MouseEvent, cell: TabulatorCellComponent) {
   const colIdx = getColIndex(cell.getField());
   if (colIdx === undefined || !props.resultSet) return;
-  if (isColumnEditable(colIdx)) return;
 
-  const colName = props.resultSet.columns[colIdx]?.name ?? '';
+  const rowData = cell.getRow().getData() as unknown as CellValue[];
+  if (isColumnEditable(colIdx, rowData)) return;
+
+  const column = props.resultSet.columns[colIdx];
+  const colName = column?.name ?? '';
+  const generated = generatedColumnNames.value.has(colName.toLowerCase());
+  if (generated && (cell.getValue() === null || cell.getValue() === undefined)) {
+    // A pending row's identity/computed cell is still NULL; explain where the value will come from
+    // instead of copying the literal "NULL".
+    workspaceStore.showToast(t('results.generatedCellHint'), 'info', 3200);
+    return;
+  }
+
   const text = formatCellForExport(cell.getValue() as CellValue);
 
   navigator.clipboard.writeText(text).then(
@@ -1344,15 +2209,16 @@ function openDataView() {
 // Tabulator grid
 // --------------------------------------------------------------------------
 
-const gridIsActive = computed(() => !!props.resultSet && props.resultSet.rows.length > 0);
+const gridIsActive = computed(() => !!props.resultSet && hasRows.value);
 
+// Row count is deliberately not part of the signature: adding a row only changes the data, so the
+// table must be updated with `replaceData`, never torn down and rebuilt (which would lose scroll).
 const gridColumnSignature = computed(() =>
   [
     props.resultSet?.columns.map((c) => `${c.name}|${c.dataType}|${c.nullable ? 1 : 0}`).join('\u0001') ?? '',
     [...primaryKeyColumnNames.value].sort().join(','),
     [...identityColumnNames.value].sort().join(','),
     editability.value.canEdit ? '1' : '0',
-    String(props.resultSet?.rows.length ?? 0),
   ].join('\u0002')
 );
 
@@ -1380,7 +2246,8 @@ function buildColumnDefinitions(): TabulatorColumnDefinition[] {
           : `型別 (Type): ${col.dataType}${col.nullable ? ' | 可為 NULL' : ' | NOT NULL'}${editability.value.canEdit ? ' (雙擊可編輯)' : ''} (拖曳表頭調整順序)`,
       isPrimaryKey: isPk,
       isIdentity,
-      isEditable: () => isColumnEditable(colIdx),
+      isEditable: (cell) =>
+        isColumnEditable(colIdx, cell?.getRow().getData() as CellValue[] | undefined),
       isModified: isCellModified,
       extraClass: isStmtText ? 'sqlight-stmt-text' : undefined,
     });
@@ -1437,6 +2304,8 @@ function applyQuickFilterTerm(term: string) {
 let disposeGridPerfDiag: (() => void) | null = null;
 let movingRowIndexColumn = false;
 let editSnapshot: { rowData: CellValue[]; colIdx: number; previousValue: CellValue } | null = null;
+/** Last clicked cell, used as the F2 target when the range module has no active cell. */
+let lastClickedCell: TabulatorCellComponent | null = null;
 
 function handleColumnMoved(moved: TabulatorColumnComponent) {
   const table = grid.table.value;
@@ -1483,10 +2352,46 @@ function handleCellEdited(cell: TabulatorCellComponent) {
   applyCellValueClasses(cell.getElement(), nextValue, isCellModified(rowData, colIdx));
 }
 
-/** Clicking the frozen `#` cell selects the whole row. */
+/** Any click remembers the row for the toolbar delete button; `#` also selects the whole row. */
 function handleCellClick(_event: MouseEvent, cell: TabulatorCellComponent) {
+  activeRowData.value = cell.getRow().getData() as unknown as CellValue[];
+  lastClickedCell = cell;
   if (cell.getField() !== ROW_INDEX_FIELD) return;
   selection.selectRow(cell.getRow());
+}
+
+/**
+ * F2 mirrors Tabulator's own Enter-to-edit shortcut for the active range cell. Read-only cells
+ * (PK, identity, generated columns) simply keep the selection unchanged.
+ */
+function handleGridKeydown(event: KeyboardEvent) {
+  if (event.key !== 'F2') return;
+
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  ) {
+    return;
+  }
+
+  const cell = activeRangeCell(grid.table.value) ?? lastClickedCell;
+  if (!cell || !props.resultSet) return;
+
+  const colIdx = getColIndex(cell.getField());
+  if (colIdx === undefined) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (cell.getElement().classList.contains('tabulator-editing')) return;
+  if (!isColumnEditable(colIdx, cell.getRow().getData() as unknown as CellValue[])) return;
+
+  try {
+    editCell(grid.table.value, cell);
+  } catch {
+    // A cell from a table that was rebuilt under the pointer is simply no longer editable.
+  }
 }
 
 /** Clicking the `#` header selects the whole table. */
@@ -1517,6 +2422,7 @@ function handleCellContext(event: MouseEvent, cell: TabulatorCellComponent) {
   contextMenu.cellValue = cell.getValue();
   contextMenu.rowIndex = cell.getRow().getPosition() - 1;
   contextMenu.rowData = cell.getRow().getData() as unknown as CellValue[];
+  activeRowData.value = contextMenu.rowData;
 
   function closeMenu() {
     contextMenu.visible = false;
@@ -1550,8 +2456,15 @@ const grid = useTabulatorTable({
     index: '__sqlightRowId',
     rowHeight: 24,
     columns: buildColumnDefinitions(),
+    rowFormatter: (row: TabulatorRowComponent) => {
+      const data = row.getData() as unknown as CellValue[];
+      const element = row.getElement();
+      element.classList.toggle('sqlight-row-inserted', isPendingInsert(data));
+      element.classList.toggle('sqlight-row-pending-delete', isPendingDelete(data));
+    },
   }),
   onReady: (table) => {
+    lastClickedCell = null;
     selection.attach(table);
     table.on('cellDblClick', handleCellDoubleClick);
     table.on('cellContext', handleCellContext);
@@ -1567,6 +2480,7 @@ const grid = useTabulatorTable({
     // Restore the remembered layout when returning to a previously viewed result set.
     gridLayoutStore.restore(layoutKey.value, table);
     applyQuickFilterTerm(quickFilter.value);
+    applyRowStateClasses();
 
     const container = gridContainerRef.value;
     if (container) {

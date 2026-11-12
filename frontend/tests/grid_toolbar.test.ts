@@ -462,8 +462,8 @@ describe('ResultGrid toolbar persistence and empty state row validation', () => 
 
     assert.match(
       source,
-      /const hasRows = computed\(\(\) => \(props\.resultSet\?\.rows\?\.length \?\? 0\) > 0\);/,
-      'hasRows computed property must be defined'
+      /const hasRows = computed\(\(\) => \{[\s\S]{0,120}?rowRevision\.value;[\s\S]{0,120}?return \(props\.resultSet\?\.rows\?\.length \?\? 0\) > 0;[\s\S]{0,40}?\}\);/,
+      'hasRows computed property must depend on the structural row revision'
     );
 
     assert.match(
@@ -474,8 +474,8 @@ describe('ResultGrid toolbar persistence and empty state row validation', () => 
 
     assert.match(
       source,
-      /:disabled="modifiedCount === 0 \|\| !hasRows"/,
-      'revert and commit buttons must check hasRows'
+      /:disabled="pendingRowCount === 0"/,
+      'revert and commit buttons must check the pending row count'
     );
   });
 });

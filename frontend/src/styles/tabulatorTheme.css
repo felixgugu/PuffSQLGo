@@ -39,6 +39,11 @@ html.dark .tabulator {
   --sq-grid-bool-false-accent: #fb7185;
   --sq-grid-modified-bg: rgba(245, 158, 11, 0.15);
   --sq-grid-modified-text: #fde68a;
+  /* Pending row-level changes: inserted rows are green, marked deletions are red. */
+  --sq-grid-inserted-bg: rgba(16, 185, 129, 0.16);
+  --sq-grid-inserted-text: #a7f3d0;
+  --sq-grid-deleted-bg: rgba(244, 63, 94, 0.16);
+  --sq-grid-deleted-text: #fda4af;
   --sq-grid-accent: #0284c7;
   --sq-grid-pk-accent: #fbbf24;
   --sq-grid-identity-accent: #22d3ee;
@@ -76,6 +81,11 @@ html:not(.dark) .tabulator {
   --sq-grid-bool-false-accent: #be123c;
   --sq-grid-modified-bg: rgba(245, 158, 11, 0.15);
   --sq-grid-modified-text: #92400e;
+  /* Pending row-level changes: inserted rows are green, marked deletions are red. */
+  --sq-grid-inserted-bg: rgba(5, 150, 105, 0.10);
+  --sq-grid-inserted-text: #065f46;
+  --sq-grid-deleted-bg: rgba(225, 29, 72, 0.10);
+  --sq-grid-deleted-text: #9f1239;
   --sq-grid-accent: #0284c7;
   /* Solid, contrast-safe accents: the dark theme's bright icons read as neon on white. */
   --sq-grid-pk-accent: #b45309;
@@ -233,6 +243,26 @@ html:not(.dark) .tabulator {
   background-color: var(--sq-grid-bg);
 }
 
+/* Pending structural edits. These rules sit after the stripe/hover rules so they win on a zebra
+   row and stay visible while the pointer passes over it. */
+.tabulator-row.sqlight-row-inserted,
+.tabulator-row.sqlight-row-inserted.tabulator-row-even,
+.tabulator-row.sqlight-row-inserted:hover {
+  background-color: var(--sq-grid-inserted-bg);
+}
+
+.tabulator-row.sqlight-row-pending-delete,
+.tabulator-row.sqlight-row-pending-delete.tabulator-row-even,
+.tabulator-row.sqlight-row-pending-delete:hover {
+  background-color: var(--sq-grid-deleted-bg);
+}
+
+.tabulator-row.sqlight-row-pending-delete .tabulator-cell:not(.sqlight-row-index-cell) {
+  color: var(--sq-grid-deleted-text);
+  text-decoration: line-through;
+  text-decoration-color: rgb(var(--color-danger) / 0.7);
+}
+
 .tabulator-row .tabulator-cell {
   padding: 0 6px;
   border-right: 1px solid var(--sq-grid-line);
@@ -284,6 +314,24 @@ html:not(.dark) .tabulator {
 
 .tabulator-row:hover .tabulator-cell.sqlight-row-index-cell {
   background-color: var(--sq-grid-row-hover);
+}
+
+/* The frozen # cell mirrors the pending row state, overriding the zebra and hover mirroring above
+   (same property, higher specificity). */
+.tabulator-row.sqlight-row-inserted .tabulator-cell.sqlight-row-index-cell,
+.tabulator-row.sqlight-row-inserted.tabulator-row-even .tabulator-cell.sqlight-row-index-cell,
+.tabulator-row.sqlight-row-inserted:hover .tabulator-cell.sqlight-row-index-cell {
+  background-color: var(--sq-grid-inserted-bg);
+  color: var(--sq-grid-inserted-text);
+  box-shadow: inset 3px 0 0 0 rgb(var(--color-ok));
+}
+
+.tabulator-row.sqlight-row-pending-delete .tabulator-cell.sqlight-row-index-cell,
+.tabulator-row.sqlight-row-pending-delete.tabulator-row-even .tabulator-cell.sqlight-row-index-cell,
+.tabulator-row.sqlight-row-pending-delete:hover .tabulator-cell.sqlight-row-index-cell {
+  background-color: var(--sq-grid-deleted-bg);
+  color: var(--sq-grid-deleted-text);
+  box-shadow: inset 3px 0 0 0 rgb(var(--color-danger));
 }
 
 .tabulator .tabulator-header .tabulator-col.sqlight-row-index-cell {

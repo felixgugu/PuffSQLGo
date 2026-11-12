@@ -121,6 +121,11 @@ declare module 'tabulator-tables' {
     getColumn(field: string): TabulatorColumnComponent | false;
     getRows(): TabulatorRowComponent[];
     getRowFromPosition(position: number): TabulatorRowComponent | false;
+    scrollToRow(
+      row: TabulatorRowComponent | number | string,
+      position?: 'top' | 'center' | 'bottom' | 'nearest',
+      ifVisible?: boolean
+    ): void;
     getRanges(): TabulatorRangeComponent[];
     addRange(
       start?: TabulatorCellComponent | null,
