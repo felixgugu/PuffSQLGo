@@ -1,3 +1,4 @@
+import { useConnectionStore } from './connectionStore';
 import { defineStore } from 'pinia';
 import { ref, computed, watch, markRaw } from 'vue';
 import type { QueryResult, QueryHistoryItem, QueryResultTab, QueryMessage, SessionMessageItem } from '@/types/query';
@@ -283,8 +284,11 @@ export const useQueryStore = defineStore('query', () => {
 
     try {
       const limit = limitOverride !== undefined ? limitOverride : maxRows.value;
-      const isShowplan = isShowplanEnabled.value;
-      const isActualPlan = isActualPlanEnabled.value;
+      // Plans and statistics are built on SQL Server session options; other engines run the
+      // statement as written even when a toggle was left on from a previous connection.
+      const capabilities = useConnectionStore().getDialectFor(connectionId).capabilities;
+      const isShowplan = capabilities.executionPlan && isShowplanEnabled.value;
+      const isActualPlan = capabilities.executionPlan && isActualPlanEnabled.value;
       let result: QueryResult;
       let actualPlanXml: string | null = null;
 
@@ -314,7 +318,7 @@ export const useQueryStore = defineStore('query', () => {
         }
       } else {
         // Only wrap with performance telemetry if single-batch (variable scope cannot cross GO boundaries)
-        const effectiveSql = isStatsEnabled.value && batches.length <= 1
+        const effectiveSql = capabilities.statistics && isStatsEnabled.value && batches.length <= 1
           ? wrapQueryWithPerfTelemetry(sql)
           : sql;
         result = await queryService.executeQuery(connectionId, database, effectiveSql, limit, reqId);

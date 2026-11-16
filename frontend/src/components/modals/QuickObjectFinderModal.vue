@@ -229,6 +229,7 @@
               <template #icon><Table2 class="w-3.5 h-3.5" /></template>
             </SqButton>
             <SqButton
+              v-if="connectionStore.getDialectFor(res.item.connId).capabilities.structureViewer"
               type="button"
               :label="$t('quickFinder.structureBtn')"
               size="sm"
@@ -253,6 +254,7 @@
           <!-- For Columns: Structure of the owning table, SELECT of the column -->
           <template v-else-if="res.item.type === 'column'">
             <SqButton
+              v-if="connectionStore.getDialectFor(res.item.connId).capabilities.structureViewer"
               type="button"
               :label="$t('quickFinder.structureBtn')"
               size="sm"
@@ -532,7 +534,7 @@ watch(
   () => props.isOpen,
   async (isOpen) => {
     if (isOpen) {
-      currentDatabase.value = connectionStore.activeDatabase || 'master';
+      currentDatabase.value = connectionStore.activeDatabase || connectionStore.defaultDatabase;
       activeIndex.value = 0;
       await nextTick();
       focusSearchInput();
@@ -665,14 +667,19 @@ function openTableStructure(item: QuickFinderItem) {
 }
 
 function generateSelectQuery(item: QuickFinderItem) {
-  const sql = generateTableSelectSql(item.schema, item.name);
+  const sql = generateTableSelectSql(item.schema, item.name, connectionStore.getDialectFor(item.connId));
   workspaceStore.addSqlTab(sql, `${item.name}.sql`, item.connId, item.database);
   closeModal();
 }
 
 function generateColumnSelectQuery(item: QuickFinderItem) {
   const tableName = item.table ?? '';
-  const sql = generateColumnSelectSql(item.schema, tableName, item.name);
+  const sql = generateColumnSelectSql(
+    item.schema,
+    tableName,
+    item.name,
+    connectionStore.getDialectFor(item.connId)
+  );
   workspaceStore.addSqlTab(sql, `${item.name}.sql`, item.connId, item.database);
   closeModal();
 }
@@ -685,9 +692,17 @@ async function viewDefinition(item: QuickFinderItem) {
       item.schema,
       item.name
     );
+    const dialect = connectionStore.getDialectFor(item.connId);
     if (def) {
       workspaceStore.addSqlTab(def, `${item.schema}.${item.name}.sql`, item.connId, item.database);
-      workspaceStore.showToast(`已載入 [${item.schema}].[${item.name}] 定義`, 'success', 2500);
+      workspaceStore.showToast(`已載入 ${item.name} 定義`, 'success', 2500);
+    } else if (dialect.engine !== 'mssql') {
+      workspaceStore.addSqlTab(
+        dialect.definitionSql(item.database, item.schema, item.name, 'PROCEDURE') + '\n',
+        `${item.name}.sql`,
+        item.connId,
+        item.database
+      );
     } else {
       const fallback = `USE [${item.database}];\nGO\n\nSELECT OBJECT_DEFINITION(OBJECT_ID(N'[${item.schema}].[${item.name}]')) AS [Definition];\n`;
       workspaceStore.addSqlTab(fallback, `${item.schema}.${item.name}.sql`, item.connId, item.database);
@@ -700,13 +715,17 @@ async function viewDefinition(item: QuickFinderItem) {
 }
 
 function generateExecQuery(item: QuickFinderItem) {
-  const sql = `-- 執行預存程序 [${item.schema}].[${item.name}]\nUSE [${item.database}];\nGO\n\nEXEC [${item.schema}].[${item.name}];\n`;
+  const sql = connectionStore
+    .getDialectFor(item.connId)
+    .callProcedureSql(item.database, item.schema, item.name);
   workspaceStore.addSqlTab(sql, `EXEC_${item.name}.sql`, item.connId, item.database);
   closeModal();
 }
 
 function generateFuncSelectQuery(item: QuickFinderItem) {
-  const sql = `-- 呼叫自訂函數 [${item.schema}].[${item.name}]\nUSE [${item.database}];\nGO\n\nSELECT [${item.schema}].[${item.name}]();\n`;
+  const sql = connectionStore
+    .getDialectFor(item.connId)
+    .callFunctionSql(item.database, item.schema, item.name);
   workspaceStore.addSqlTab(sql, `FUNC_${item.name}.sql`, item.connId, item.database);
   closeModal();
 }

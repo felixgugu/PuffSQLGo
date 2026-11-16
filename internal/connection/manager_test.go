@@ -104,3 +104,48 @@ func (failingCredentials) Get(string) (string, bool, error) {
 }
 func (failingCredentials) Set(string, string) error { return errors.New("keychain unavailable") }
 func (failingCredentials) Delete(string) error      { return errors.New("keychain unavailable") }
+
+func TestSaveProfileAppliesEngineDefaultsAndKeepsEngineOnEdit(t *testing.T) {
+	manager := NewManager(storage.NewAt(t.TempDir()), nil)
+	manager.credentials = &fakeCredentials{values: map[string]string{}}
+
+	legacy, err := manager.SaveProfile(model.SaveConnectionRequest{
+		ConnectionConfig: model.ConnectionConfig{Name: "Legacy", Host: "localhost"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Engine != "mssql" || legacy.Port != 1433 || legacy.Database != "master" {
+		t.Fatalf("SQL Server defaults not applied: %#v", legacy)
+	}
+
+	created, err := manager.SaveProfile(model.SaveConnectionRequest{
+		ConnectionConfig: model.ConnectionConfig{Name: "Shop", Host: "localhost"},
+		Engine:           "mysql",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Engine != "mysql" || created.Port != 3306 || created.Database != "" {
+		t.Fatalf("MySQL defaults not applied: %#v", created)
+	}
+
+	edited, err := manager.SaveProfile(model.SaveConnectionRequest{
+		ConnectionConfig: model.ConnectionConfig{Name: "Shop", Host: "db.example"},
+		ID:               &created.ID,
+		Engine:           "mssql",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.Engine != "mysql" || edited.Port != 3306 {
+		t.Fatalf("editing must keep the profile engine: %#v", edited)
+	}
+
+	if _, err := manager.SaveProfile(model.SaveConnectionRequest{
+		ConnectionConfig: model.ConnectionConfig{Name: "Other", Host: "localhost"},
+		Engine:           "oracle",
+	}); err == nil {
+		t.Fatal("unknown engines must be rejected")
+	}
+}

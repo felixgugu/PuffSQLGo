@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/microsoft/go-mssqldb"
+	"puffsql/internal/dbengine"
 	"puffsql/internal/model"
 )
 
@@ -69,6 +70,12 @@ func (s *Server) pauseIdleConnections() {
 
 func (s *Server) resumeIdleConnections() {
 	s.DB.SetMaxIdleConns(maxIdleConns)
+}
+
+// KillSession terminates another session (SPID) of this server.
+func (s *Server) KillSession(ctx context.Context, sessionID int) error {
+	_, err := s.DB.ExecContext(ctx, fmt.Sprintf("KILL %d", sessionID))
+	return err
 }
 
 func (s *Server) Database() string {
@@ -135,3 +142,5 @@ func QuoteIdentifier(value string) string {
 func QualifiedTable(schema, table string) string {
 	return QuoteIdentifier(schema) + "." + QuoteIdentifier(table)
 }
+
+var _ dbengine.Server = (*Server)(nil)

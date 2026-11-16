@@ -1,4 +1,6 @@
-export type DatabaseEngine = 'mssql';
+import type { DatabaseEngine } from '@/dialects';
+
+export type { DatabaseEngine };
 
 export interface ConnectionConfig {
   name: string;

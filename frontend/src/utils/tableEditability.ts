@@ -1,3 +1,4 @@
+import { currentDialect } from '@/dialects';
 import { extractAllTableNamesFromSql, parseTargetTableFromSql } from './sqlGenerator';
 import type { ColumnDef, QueryResultTab } from '@/types/query';
 import type { TableSchema, ColumnItem } from '@/types/schema';
@@ -56,7 +57,7 @@ export function checkTableEditability(options: CheckEditabilityOptions): TableEd
 
   if (tab.tableName) {
     targetTable = {
-      schema: tab.schema || 'dbo',
+      schema: tab.schema || currentDialect().defaultSchema,
       tableName: tab.tableName,
     };
   } else if (sql.trim()) {
@@ -73,14 +74,14 @@ export function checkTableEditability(options: CheckEditabilityOptions): TableEd
 
     if (allTables.length === 1 && allTables[0]) {
       targetTable = {
-        schema: allTables[0].schema || 'dbo',
+        schema: allTables[0].schema || currentDialect().defaultSchema,
         tableName: allTables[0].tableName,
       };
     } else {
       const parsedTarget = parseTargetTableFromSql(sql);
       if (parsedTarget) {
         targetTable = {
-          schema: parsedTarget.schema || 'dbo',
+          schema: parsedTarget.schema || currentDialect().defaultSchema,
           tableName: parsedTarget.tableName,
         };
       }

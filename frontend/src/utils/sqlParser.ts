@@ -1,3 +1,5 @@
+import { currentDialect, type Dialect } from '@/dialects';
+
 export interface TableAliasMap {
   // Key: alias or tableName (lowercase) -> Value: actual tableName
   aliases: Map<string, string>;
@@ -199,14 +201,15 @@ export function getCursorContext(textUntilCursor: string): CursorContext {
 }
 
 /**
- * Wraps identifier in square brackets if it contains spaces, special characters, or is a reserved keyword.
+ * Quotes an identifier only when it needs it: it contains spaces or special characters, or it is
+ * a reserved keyword. Uses the dialect's quoting (`[name]` or `` `name` ``).
  */
-export function wrapIdentifierIfNeeded(name: string): string {
+export function wrapIdentifierIfNeeded(name: string, dialect: Dialect = currentDialect()): string {
   if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
     if (SQL_RESERVED_IDENTIFIERS.has(name.toLowerCase())) {
-      return `[${name}]`;
+      return dialect.quoteIdentifier(name);
     }
     return name;
   }
-  return `[${name}]`;
+  return dialect.quoteIdentifier(name);
 }

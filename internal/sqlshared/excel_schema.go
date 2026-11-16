@@ -1,7 +1,8 @@
-package mssql
+package sqlshared
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,10 +33,24 @@ type excelStyles struct {
 	Wrap    int
 }
 
+// ExcelSource is the slice of an engine the Excel writers need: catalog reads, a row stream for
+// one table and the engine's cell normalization and table naming.
+type ExcelSource interface {
+	GetTables(ctx context.Context, database, schema *string) ([]model.TableItem, error)
+	GetTableObjects(ctx context.Context, database *string, schema, table string) (model.TableObjects, error)
+	// OpenTableRows streams every row of one table. release must be called after rows is closed.
+	OpenTableRows(ctx context.Context, database string, table model.TableItem) (rows *sql.Rows, release func(), err error)
+	NormalizeValue(value any, typeName string) any
+	// TableLabel is the display name of a table ("schema.name", or just "name" for engines
+	// without a schema level).
+	TableLabel(table model.TableItem) string
+}
+
 // ExportDatabaseSchemaExcel writes one schema-only worksheet per base table.
 // SELECT queries are never issued against the user tables; GetTableObjects reads catalog views only.
-func (s *Server) ExportDatabaseSchemaExcel(
+func ExportDatabaseSchemaExcel(
 	ctx context.Context,
+	s ExcelSource,
 	database string,
 	path string,
 	progress func(model.ExcelExportProgress),
@@ -72,10 +87,10 @@ func (s *Server) ExportDatabaseSchemaExcel(
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		sheet := uniqueExcelSheetName(table.Schema+"."+table.Name, usedNames)
-		info, err := s.writeTableSchemaSheet(ctx, workbook, database, table, sheet, styles)
+		sheet := uniqueExcelSheetName(s.TableLabel(table), usedNames)
+		info, err := writeTableSchemaSheet(ctx, s, workbook, database, table, sheet, styles)
 		if err != nil {
-			return result, fmt.Errorf("export schema for %s.%s: %w", table.Schema, table.Name, err)
+			return result, fmt.Errorf("export schema for %s: %w", s.TableLabel(table), err)
 		}
 		indexInfo = append(indexInfo, info)
 		result.ColumnCount += info.Columns
@@ -83,7 +98,7 @@ func (s *Server) ExportDatabaseSchemaExcel(
 			progress(model.ExcelExportProgress{
 				Current: i + 1,
 				Total:   len(baseTables),
-				Table:   table.Schema + "." + table.Name,
+				Table:   s.TableLabel(table),
 				Sheets:  len(indexInfo),
 				Columns: result.ColumnCount,
 			})
@@ -101,12 +116,13 @@ func (s *Server) ExportDatabaseSchemaExcel(
 	if err := workbook.SaveAs(path); err != nil {
 		return result, err
 	}
-	result.ExecutionTimeMS = elapsedMillis(started)
+	result.ExecutionTimeMS = ElapsedMillis(started)
 	return result, nil
 }
 
-func (s *Server) writeTableSchemaSheet(
+func writeTableSchemaSheet(
 	ctx context.Context,
+	s ExcelSource,
 	workbook *excelize.File,
 	database string,
 	table model.TableItem,

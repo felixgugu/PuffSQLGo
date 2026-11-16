@@ -625,6 +625,7 @@ export namespace model {
 	    color?: string;
 	    modificationPrompt?: boolean;
 	    id?: string;
+	    engine?: string;
 	    password?: string;
 	    copyPasswordFrom?: string;
 	
@@ -645,6 +646,7 @@ export namespace model {
 	        this.color = source["color"];
 	        this.modificationPrompt = source["modificationPrompt"];
 	        this.id = source["id"];
+	        this.engine = source["engine"];
 	        this.password = source["password"];
 	        this.copyPasswordFrom = source["copyPasswordFrom"];
 	    }

@@ -9,9 +9,9 @@
       <div
         v-if="connectionStore.activeSpid"
         class="flex items-center space-x-1"
-        :title="$t('statusBar.spid', { spid: connectionStore.activeSpid })"
+        :title="`${connectionStore.activeDialect.sessionLabel}: ${connectionStore.activeSpid}`"
       >
-        <span class="text-dark-500">SPID:</span>
+        <span class="text-dark-500">{{ connectionStore.activeDialect.sessionLabel }}:</span>
         <SqChip tone="neutral" :label="String(connectionStore.activeSpid)" class="font-mono font-medium" />
       </div>
     </div>
@@ -35,7 +35,7 @@
 
       <div class="flex items-center space-x-1">
         <span class="text-dark-500">Engine:</span>
-        <span class="text-dark-300">MS SQL Server</span>
+        <span class="text-dark-300">{{ connectionStore.activeDialect.label }}</span>
       </div>
 
       <div class="h-3 w-px bg-dark-750" />

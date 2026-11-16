@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"puffsql/internal/dbengine"
 	"puffsql/internal/errlog"
 	"puffsql/internal/model"
 	"puffsql/internal/mssql"
+	"puffsql/internal/mysql"
 	"puffsql/internal/storage"
 )
 
@@ -20,7 +22,7 @@ type Manager struct {
 	credentials CredentialStore
 	logger      *errlog.Logger
 	mu          sync.RWMutex
-	servers     map[string]*mssql.Server
+	servers     map[string]dbengine.Server
 	passwords   map[string]string
 	spids       map[string]int
 	queries     map[string]*activeQuery
@@ -50,7 +52,7 @@ func NewManager(store *storage.Store, logger *errlog.Logger) *Manager {
 		store:       store,
 		credentials: OSKeyring{},
 		logger:      logger,
-		servers:     map[string]*mssql.Server{},
+		servers:     map[string]dbengine.Server{},
 		passwords:   map[string]string{},
 		spids:       map[string]int{},
 		queries:     map[string]*activeQuery{},
@@ -69,6 +71,10 @@ func (m *Manager) SaveProfile(req model.SaveConnectionRequest) (model.Connection
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return model.ConnectionProfile{}, errors.New("connection name cannot be empty")
+	}
+	engine, err := dbengine.Normalize(req.Engine)
+	if err != nil {
+		return model.ConnectionProfile{}, err
 	}
 	profiles, err := m.store.LoadProfiles()
 	if err != nil {
@@ -112,21 +118,21 @@ func (m *Manager) SaveProfile(req model.SaveConnectionRequest) (model.Connection
 	profile := model.ConnectionProfile{
 		ConnectionConfig: req.ConnectionConfig,
 		ID:               id,
-		Engine:           "mssql",
+		Engine:           engine,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	profile.Name = name
-	if profile.Port <= 0 || profile.Port > 65535 {
-		profile.Port = 1433
-	}
-	if profile.Database == "" {
-		profile.Database = "master"
-	}
 
 	replaced := false
 	for i := range profiles {
 		if profiles[i].ID == id {
+			// The engine of an existing profile is fixed: its saved database, port and every
+			// open tab were chosen for that engine.
+			if existing, err := dbengine.Normalize(profiles[i].Engine); err == nil {
+				profile.Engine = existing
+			}
+			dbengine.ApplyDefaults(&profile)
 			profile.CreatedAt = profiles[i].CreatedAt
 			profiles[i] = profile
 			replaced = true
@@ -134,6 +140,7 @@ func (m *Manager) SaveProfile(req model.SaveConnectionRequest) (model.Connection
 		}
 	}
 	if !replaced {
+		dbengine.ApplyDefaults(&profile)
 		profiles = append(profiles, profile)
 	}
 	if err := m.store.SaveProfiles(profiles); err != nil {
@@ -177,18 +184,17 @@ func (m *Manager) TestConnection(req model.SaveConnectionRequest) error {
 			return err
 		}
 	}
+	engine, err := dbengine.Normalize(req.Engine)
+	if err != nil {
+		return err
+	}
 	profile := model.ConnectionProfile{
 		ConnectionConfig: req.ConnectionConfig,
 		ID:               "test",
-		Engine:           "mssql",
+		Engine:           engine,
 	}
-	if profile.Port == 0 {
-		profile.Port = 1433
-	}
-	if profile.Database == "" {
-		profile.Database = "master"
-	}
-	server, err := mssql.Open(profile, password)
+	dbengine.ApplyDefaults(&profile)
+	server, err := openServer(profile, password)
 	if err != nil {
 		return err
 	}
@@ -212,7 +218,7 @@ func (m *Manager) Connect(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	server, err := mssql.Open(profile, password)
+	server, err := openServer(profile, password)
 	if err != nil {
 		return err
 	}
@@ -234,7 +240,7 @@ func (m *Manager) Disconnect(id string) error {
 	return nil
 }
 
-func (m *Manager) Server(ctx context.Context, id string) (*mssql.Server, error) {
+func (m *Manager) Server(ctx context.Context, id string) (dbengine.Server, error) {
 	if server := m.server(id); server != nil {
 		return server, nil
 	}
@@ -458,7 +464,7 @@ func (m *Manager) CancelQuery(connectionID string, requestID *string) error {
 		return nil
 	}
 	state.cancel()
-	// A cancelled TDS stream must not return to the pool. Release it immediately, then use a
+	// A cancelled protocol stream must not return to the pool. Release it immediately, then use a
 	// separate connection for KILL before returning. The next command lazily opens a fresh pool;
 	// reconnecting in the background can otherwise race this KILL and target its replacement SPID.
 	m.disconnectOnly(connectionID)
@@ -513,7 +519,7 @@ func (m *Manager) profileAndPassword(id string) (model.ConnectionProfile, string
 	return model.ConnectionProfile{}, "", fmt.Errorf("connection profile %s not found", id)
 }
 
-func (m *Manager) server(id string) *mssql.Server {
+func (m *Manager) server(id string) dbengine.Server {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.servers[id]
@@ -535,15 +541,27 @@ func (m *Manager) killSPID(connectionID string, spid int) error {
 	if err != nil {
 		return err
 	}
-	aux, err := mssql.Open(profile, password)
+	aux, err := openServer(profile, password)
 	if err != nil {
 		return err
 	}
 	defer aux.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, err = aux.DB.ExecContext(ctx, fmt.Sprintf("KILL %d", spid))
-	return err
+	return aux.KillSession(ctx, spid)
+}
+
+// openServer opens a pool with the engine package the profile names.
+func openServer(profile model.ConnectionProfile, password string) (dbengine.Server, error) {
+	engine, err := dbengine.Normalize(profile.Engine)
+	if err != nil {
+		return nil, err
+	}
+	profile.Engine = engine
+	if engine == dbengine.MySQL {
+		return mysql.Open(profile, password)
+	}
+	return mssql.Open(profile, password)
 }
 
 func (m *Manager) setCachedPassword(id, password string) {

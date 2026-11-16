@@ -2,6 +2,8 @@ import { monaco } from '@/utils/monaco';
 import { useSchemaStore } from '@/stores/schemaStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { SQL_KEYWORDS, SQL_FUNCTIONS, SQL_SNIPPETS } from './sqlKeywords';
+import { MYSQL_SQL_KEYWORDS, MYSQL_SQL_FUNCTIONS, MYSQL_SQL_SNIPPETS } from './sqlKeywordsMySql';
+import { currentDialect } from '@/dialects';
 import {
   parseTableAliases,
   getCursorContext,
@@ -29,7 +31,7 @@ export function setupSqlCompletionProvider(): void {
   if (isProviderRegistered) return;
 
   providerDisposable = monaco.languages.registerCompletionItemProvider('sql', {
-    triggerCharacters: ['.', ' ', '[', '(', ','],
+    triggerCharacters: ['.', ' ', '[', '`', '(', ','],
 
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
@@ -215,7 +217,8 @@ export function setupSqlCompletionProvider(): void {
       }
 
       // 3.2 SQL Server Built-in Functions
-      for (const fn of SQL_FUNCTIONS) {
+      const isMySql = currentDialect().engine === 'mysql';
+      for (const fn of isMySql ? MYSQL_SQL_FUNCTIONS : SQL_FUNCTIONS) {
         suggestions.push({
           label: fn.name,
           kind: monaco.languages.CompletionItemKind.Function,
@@ -230,7 +233,7 @@ export function setupSqlCompletionProvider(): void {
       }
 
       // 3.3 SQL Keywords
-      for (const kw of SQL_KEYWORDS) {
+      for (const kw of isMySql ? MYSQL_SQL_KEYWORDS : SQL_KEYWORDS) {
         suggestions.push({
           label: kw.name,
           kind: monaco.languages.CompletionItemKind.Keyword,
@@ -277,7 +280,7 @@ export function setupSqlCompletionProvider(): void {
       }
 
       // 3.6 Code Snippets
-      for (const snip of SQL_SNIPPETS) {
+      for (const snip of isMySql ? MYSQL_SQL_SNIPPETS : SQL_SNIPPETS) {
         suggestions.push({
           label: snip.label,
           kind: monaco.languages.CompletionItemKind.Snippet,

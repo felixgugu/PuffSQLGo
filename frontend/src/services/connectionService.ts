@@ -1,11 +1,11 @@
 import { invokeCommand } from './api';
-import type { ConnectionProfile } from '@/types/connection';
+import type { ConnectionProfile, DatabaseEngine } from '@/types/connection';
 
 export interface SaveConnectionPayload {
   id?: string;
   name: string;
   alias?: string;
-  engine: 'mssql';
+  engine: DatabaseEngine;
   host: string;
   port: number;
   database: string;

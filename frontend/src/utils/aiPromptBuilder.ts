@@ -1,3 +1,5 @@
+import { currentDialect } from '@/dialects';
+
 /**
  * AI Prompt Builder Utility
  * 
@@ -84,8 +86,9 @@ export interface StatsAdviceContext {
  * Builds a structured diagnostic prompt for SQL errors.
  */
 export function buildErrorDiagnosisPrompt(ctx: ErrorDiagnosisContext): string {
+  const dialect = currentDialect();
   const parts: string[] = [
-    '請針對以下 Microsoft SQL Server (T-SQL) 執行錯誤進行深入診斷並提供修正方案：',
+    `請針對以下 ${dialect.label} (${dialect.sqlName}) 執行錯誤進行深入診斷並提供修正方案：`,
     '',
     '【錯誤資訊】：',
   ];
@@ -113,8 +116,8 @@ export function buildErrorDiagnosisPrompt(ctx: ErrorDiagnosisContext): string {
   parts.push('');
 
   parts.push('【請提供】：');
-  parts.push('1. 💡 **錯誤根本原因分析**：說明為何 SQL Server 會拋出此錯誤（如語法順序、欄位缺失、GROUP BY 聚合條件、外鍵約束或資料型別不合等）。');
-  parts.push('2. 🛠️ **修復後的完整 T-SQL 語法**：給出修訂完成且可直接執行的正確 SQL 程式碼。若有多種修正方案，請分別列出並說明優缺點。');
+  parts.push(`1. 💡 **錯誤根本原因分析**：說明為何 ${dialect.shortLabel} 會拋出此錯誤（如語法順序、欄位缺失、GROUP BY 聚合條件、外鍵約束或資料型別不合等）。`);
+  parts.push(`2. 🛠️ **修復後的完整 ${dialect.sqlName} 語法**：給出修訂完成且可直接執行的正確 SQL 程式碼。若有多種修正方案，請分別列出並說明優缺點。`);
   parts.push('3. 📌 **防範建議與最佳實踐**：如何避免未來再次發生類似問題。');
 
   return parts.join('\n');

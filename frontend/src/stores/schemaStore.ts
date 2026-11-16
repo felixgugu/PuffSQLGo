@@ -6,6 +6,8 @@ import { useConnectionStore } from './connectionStore';
 import type { TableSchema, ColumnItem, RoutineItem, TableItem } from '@/types/schema';
 import type { QuickFinderItem } from '@/utils/fuzzySearch';
 
+type DefinitionKind = 'PROCEDURE' | 'FUNCTION' | 'VIEW' | 'TABLE';
+
 export const useSchemaStore = defineStore('schema', () => {
   const schemasByDb = reactive<Record<string, TableSchema[]>>({});
   const loadingByDb = reactive<Record<string, boolean>>({});
@@ -85,11 +87,12 @@ export const useSchemaStore = defineStore('schema', () => {
 
     loadingRoutinesByDb[key] = true;
     try {
-      const sql = `SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM [${database}].INFORMATION_SCHEMA.ROUTINES ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME;`;
+      const dialect = useConnectionStore().getDialectFor(connId);
+      const sql = dialect.routineListSql(database);
       const res = await queryService.executeQuery(connId, database, sql);
       const rows = res.resultSets[0]?.rows || [];
       const routines: RoutineItem[] = rows.map((r) => {
-        const schema = String(r[0] || 'dbo');
+        const schema = String(r[0] || dialect.defaultSchema);
         const name = String(r[1] || '');
         const rawType = String(r[2] || '').toUpperCase();
         const kind: 'PROCEDURE' | 'FUNCTION' = rawType.includes('PROCEDURE') ? 'PROCEDURE' : 'FUNCTION';
@@ -106,14 +109,57 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
 
+  /**
+   * MySQL exposes source through `SHOW CREATE <kind>`, whose result carries the statement in a
+   * column named "Create Procedure" / "Create Function" / "Create View" / "Create Table". The
+   * The kind the caller passes (or the known routine kind) is tried first, then the rest.
+   */
+  async function getMySqlDefinition(
+    connId: string,
+    database: string,
+    schema: string,
+    name: string,
+    hint?: DefinitionKind
+  ): Promise<string | null> {
+    const dialect = useConnectionStore().getDialectFor(connId);
+    const routine = (routinesByDb[dbKey(connId, database)] ?? []).find(
+      (item) => item.name.toLowerCase() === name.toLowerCase()
+    );
+    const kinds: DefinitionKind[] = ['PROCEDURE', 'FUNCTION', 'VIEW', 'TABLE'];
+    // Asking for the wrong kind is a server error, so start from the best guess and stop at the
+    // first hit.
+    const first = hint ?? routine?.kind;
+    const ordered = first ? [first, ...kinds.filter((kind) => kind !== first)] : kinds;
+
+    for (const kind of ordered) {
+      const res = await queryService.executeQuery(
+        connId,
+        database,
+        dialect.definitionSql(database, schema, name, kind)
+      );
+      const set = res.resultSets[0];
+      const column = set?.columns.findIndex((col) => /^create /i.test(col.name)) ?? -1;
+      const value = column >= 0 ? set?.rows[0]?.[column] : null;
+      if (typeof value === 'string' && value) {
+        return value;
+      }
+    }
+    return null;
+  }
+
   async function getObjectDefinition(
     connId: string,
     database: string,
     schema: string,
-    name: string
+    name: string,
+    kind?: DefinitionKind
   ): Promise<string | null> {
     try {
-      const sql = `USE [${database}]; SELECT OBJECT_DEFINITION(OBJECT_ID(N'[${schema}].[${name}]')) AS [def];`;
+      const dialect = useConnectionStore().getDialectFor(connId);
+      if (dialect.engine === 'mysql') {
+        return await getMySqlDefinition(connId, database, schema, name, kind);
+      }
+      const sql = dialect.definitionSql(database, schema, name, 'PROCEDURE');
       const res = await queryService.executeQuery(connId, database, sql);
       const val = res.resultSets[0]?.rows[0]?.[0];
       if (val && typeof val === 'string') {

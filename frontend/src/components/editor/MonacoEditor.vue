@@ -39,6 +39,7 @@ import { generateTableSelectSql } from '@/utils/tableSelectSql';
 import { dispatchClearGridSelection } from '@/utils/tabulatorGrid';
 import { useEditorStatementGuard, type EditorStatementGuard } from '@/composables/useEditorStatementGuard';
 import { format as formatSql } from 'sql-formatter';
+import { currentDialect } from '@/dialects';
 import { unformatSql } from '@/utils/sqlUnformatter';
 import type { QueryRunMode, SqlEditorToolbarAction } from '@/types/editor';
 
@@ -327,7 +328,7 @@ function applySqlTransform(action: 'format' | 'unformat', transform: (sql: strin
 function formatCode() {
   applySqlTransform('format', (sql) =>
     formatSql(sql, {
-      language: 'tsql',
+      language: currentDialect().formatterLanguage,
       keywordCase: 'upper',
       tabWidth: settingsStore.editorTabSize || 2,
     })

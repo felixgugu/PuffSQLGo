@@ -1542,6 +1542,10 @@ function buildCommitPlan(): boolean {
 
   const tab = currentTab.value;
   const db = tab?.database || connectionStore.activeDatabase || undefined;
+  const columnTypes: Record<string, string> = {};
+  for (const column of props.resultSet?.columns ?? []) {
+    columnTypes[column.name] = column.dataType;
+  }
 
   try {
     const sql = generateBatchChangesScript({
@@ -1551,6 +1555,8 @@ function buildCommitPlan(): boolean {
       updates,
       inserts,
       deletes,
+      dialect: connectionStore.getDialectFor(tab?.connectionId || connectionStore.activeConnectionId),
+      columnTypes,
     });
 
     commitModal.sql = sql;
@@ -2550,11 +2556,12 @@ function handleGenerateDml(type: 'INSERT' | 'UPDATE' | 'DELETE') {
     ? (schemaStore.getTable(tableName, connId, db) || (schema ? schemaStore.getTable(`${schema}.${tableName}`, connId, db) : undefined))
     : undefined;
 
+  const dialect = connectionStore.getDialectFor(connId);
   if (!schema && tableSchema?.schema) {
     schema = tableSchema.schema;
   }
   if (!schema) {
-    schema = 'dbo';
+    schema = dialect.defaultSchema || undefined;
   }
 
   const primaryKeyColumns = tableSchema?.columns
@@ -2585,6 +2592,7 @@ function handleGenerateDml(type: 'INSERT' | 'UPDATE' | 'DELETE') {
     columns,
     row,
     primaryKeyColumns,
+    dialect,
   };
 
   let generated = '';

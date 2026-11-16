@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import type { WorkspaceTab, BottomPanelTab, SqlEditorTab, TableDataTab, TableStructureTab, ExecutionPlanTab, ErDiagramTab } from '@/types/workspace';
 import { format as formatSql } from 'sql-formatter';
+import { currentDialect } from '@/dialects';
 import { unformatSql } from '@/utils/sqlUnformatter';
 import { useConnectionStore } from './connectionStore';
 import { useSqlFolderStore } from './sqlFolderStore';
@@ -144,7 +145,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!tab.connectionId) {
       if (connectionStore.activeConnectionId) {
         tab.connectionId = connectionStore.activeConnectionId;
-        tab.database = connectionStore.activeDatabase || 'master';
+        tab.database = connectionStore.activeDatabase || connectionStore.defaultDatabase;
       }
       return;
     }
@@ -263,7 +264,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
     const tabId = `tab-sql-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const effectiveConnId = connectionId || connectionStore.activeConnectionId || undefined;
-    const effectiveDb = database || connectionStore.activeDatabase || 'master';
+    const effectiveDb = database || connectionStore.activeDatabase || connectionStore.defaultDatabase;
 
     const newTab: SqlEditorTab = {
       id: tabId,
@@ -348,7 +349,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     const connectionStore = useConnectionStore();
     const effectiveConnId = connectionId || connectionStore.activeConnectionId || undefined;
-    const effectiveDb = database || connectionStore.activeDatabase || 'master';
+    const effectiveDb = database || connectionStore.activeDatabase || connectionStore.defaultDatabase;
 
     const existing = tabs.value.find(
       (t) =>
@@ -386,7 +387,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   ) {
     const connectionStore = useConnectionStore();
     const effectiveConnId = connectionId || connectionStore.activeConnectionId || undefined;
-    const effectiveDb = database || connectionStore.activeDatabase || 'master';
+    const effectiveDb = database || connectionStore.activeDatabase || connectionStore.defaultDatabase;
 
     const existing = tabs.value.find(
       (t) =>
@@ -456,7 +457,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }) {
     const connectionStore = useConnectionStore();
     const effectiveConnId = options.connectionId || connectionStore.activeConnectionId || undefined;
-    const effectiveDb = options.database || connectionStore.activeDatabase || 'master';
+    const effectiveDb = options.database || connectionStore.activeDatabase || connectionStore.defaultDatabase;
     const depth = options.depth || 2;
 
     // Check if same root table ER tab already exists
@@ -600,7 +601,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (current && current.type === 'sql_editor') {
       try {
         const formatted = formatSql(current.query, {
-          language: 'tsql',
+          language: currentDialect().formatterLanguage,
           keywordCase: 'upper',
           tabWidth: 2,
         });

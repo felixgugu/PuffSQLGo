@@ -240,6 +240,13 @@ import type { SqlEditorTab, TableDataTab, TableStructureTab, ExecutionPlanTab, E
 const { t } = useI18n();
 const workspaceStore = useWorkspaceStore();
 const connectionStore = useConnectionStore();
+
+/** Starter statement for a tab created by dropping something that carries no SQL. */
+function defaultDropSql(): string {
+  return connectionStore.activeDialect.engine === 'mysql'
+    ? 'SHOW TABLES;\n'
+    : 'SELECT * FROM sys.tables;\n';
+}
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
 const schemaStore = useSchemaStore();
@@ -554,7 +561,7 @@ function getTabTooltip(tab: WorkspaceTab): string {
   const conn = connectionStore.connections.find((c) => c.id === tab.connectionId);
   const connName = conn?.name || (tab.connectionId ? 'Unknown Connection' : '未指定連線');
   const aliasPart = conn?.alias ? ` (別名: ${conn.alias})` : '';
-  const dbName = tab.database || 'master';
+  const dbName = tab.database || connectionStore.getDialectFor(tab.connectionId).fallbackDatabase;
   return `${tab.title}\n連線: ${connName}${aliasPart}\n資料庫: ${dbName}\n(雙擊或右鍵重新命名此分頁)`;
 }
 
@@ -602,7 +609,7 @@ async function openSqlFile() {
           result.content,
           fileName,
           connectionStore.activeConnectionId || undefined,
-          connectionStore.activeDatabase || 'master'
+          connectionStore.activeDatabase || connectionStore.defaultDatabase
         );
         if (workspaceStore.activeTab) {
           workspaceStore.activeTab.isDirty = false;
@@ -729,7 +736,7 @@ async function runQuery(mode: QueryRunMode = 'current', queryOverride?: string) 
   await workspaceStore.ensureActiveTabConnection();
 
   const connId = connectionStore.activeConnectionId || 'default';
-  const db = connectionStore.activeDatabase || 'master';
+  const db = connectionStore.activeDatabase || connectionStore.defaultDatabase;
 
   const tabConnId = workspaceStore.activeTab?.connectionId;
   if (tabConnId && connectionStore.activeConnectionId !== tabConnId) {
@@ -879,7 +886,7 @@ function handleBarDrop(e: DragEvent) {
   const tableName = tableInfo?.table || 'Query';
   const sql = tableInfo?.sql || (tableInfo?.schema && tableInfo?.table
     ? generateTableSelectSql(tableInfo.schema, tableInfo.table)
-    : plainText || 'SELECT * FROM sys.tables;\n');
+    : plainText || defaultDropSql());
 
   try {
     workspaceStore.addSqlTab(
@@ -954,7 +961,7 @@ async function handleTabItemDrop(e: DragEvent, tab: WorkspaceTab) {
   const tableName = tableInfo?.table || 'Query';
   const sql = tableInfo?.sql || (tableInfo?.schema && tableInfo?.table
     ? generateTableSelectSql(tableInfo.schema, tableInfo.table)
-    : plainText || 'SELECT * FROM sys.tables;\n');
+    : plainText || defaultDropSql());
 
   try {
     if (tab.type === 'er_diagram') {

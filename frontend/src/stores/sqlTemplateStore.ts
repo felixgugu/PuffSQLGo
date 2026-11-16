@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { SqlTemplate, SqlTemplateCategory } from '@/types/sqlTemplate';
 import { BUILTIN_SQL_TEMPLATES } from '@/data/sqlTemplates';
+import { useConnectionStore } from './connectionStore';
 import { templateService } from '@/services/templateService';
 
 export const useSqlTemplateStore = defineStore('sqlTemplate', () => {
@@ -17,7 +18,11 @@ export const useSqlTemplateStore = defineStore('sqlTemplate', () => {
    * Merged list of built-in templates and user custom templates from file.
    */
   const allTemplates = computed<SqlTemplate[]>(() => {
-    return [...BUILTIN_SQL_TEMPLATES, ...customTemplates.value];
+    // The built-in catalogue is T-SQL; other engines only see the user's own templates.
+    const builtin = useConnectionStore().activeDialect.capabilities.builtinTemplates
+      ? BUILTIN_SQL_TEMPLATES
+      : [];
+    return [...builtin, ...customTemplates.value];
   });
 
   /**

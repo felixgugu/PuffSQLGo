@@ -1,4 +1,5 @@
 import type { CellValue } from '@/types/query';
+import { currentDialect, type Dialect } from '@/dialects';
 
 export interface ColumnInfo {
   name: string;
@@ -14,13 +15,16 @@ export interface GenerateDmlParams {
   columns: ColumnInfo[];
   row: CellValue[];
   primaryKeyColumns?: string[];
+  /** Dialect of the target connection; defaults to the active connection's dialect. */
+  dialect?: Dialect;
 }
 
 /**
- * Escapes an identifier by enclosing it in square brackets and doubling any closing brackets.
+ * Quotes an identifier for the dialect: `[name]` for SQL Server (doubling `]`), `` `name` `` for
+ * MySQL (doubling the backtick).
  */
-export function escapeIdentifier(name: string): string {
-  return `[${name.replace(/\]/g, ']]')}]`;
+export function escapeIdentifier(name: string, dialect: Dialect = currentDialect()): string {
+  return dialect.quoteIdentifier(name);
 }
 
 /**
@@ -38,9 +42,15 @@ export function formatCurrentDateTime(date = new Date()): string {
 }
 
 /**
- * Formats a JavaScript/desktop cell value into a safe T-SQL literal.
+ * Formats a JavaScript/desktop cell value into a safe SQL literal for the dialect. `dataType` is
+ * the result column's type name; a dialect may need it to write a numeric value that travelled
+ * as text (BIGINT, DECIMAL) back as a number.
  */
-export function formatSqlLiteral(val: CellValue | undefined): string {
+export function formatSqlLiteral(
+  val: CellValue | undefined,
+  dialect: Dialect = currentDialect(),
+  dataType?: string
+): string {
   if (val === null || val === undefined) {
     return 'NULL';
   }
@@ -64,27 +74,22 @@ export function formatSqlLiteral(val: CellValue | undefined): string {
   }
 
   const str = String(val);
-  const escaped = str.replace(/'/g, "''");
-  return `N'${escaped}'`;
+  if (dialect.bareNumericText(str, dataType)) {
+    return str;
+  }
+  return dialect.stringLiteral(str);
 }
 
 /**
  * Formats the full qualified table name [database].[schema].[tableName] (defaults schema to dbo if omitted)
  */
-export function formatTableName(tableName: string, schema?: string, database?: string): string {
-  const cleanTable = tableName.trim();
-  const cleanSchema = (schema || 'dbo').trim();
-  const parts: string[] = [];
-
-  if (database && database.trim()) {
-    parts.push(escapeIdentifier(database.trim()));
-  }
-  if (cleanSchema) {
-    parts.push(escapeIdentifier(cleanSchema));
-  }
-  parts.push(escapeIdentifier(cleanTable));
-
-  return parts.join('.');
+export function formatTableName(
+  tableName: string,
+  schema?: string,
+  database?: string,
+  dialect: Dialect = currentDialect()
+): string {
+  return dialect.qualifyTable(tableName, schema, database);
 }
 
 /**
@@ -95,7 +100,8 @@ export function formatTableName(tableName: string, schema?: string, database?: s
 export function buildWhereConditions(
   columns: ColumnInfo[],
   row: CellValue[],
-  primaryKeyColumns?: string[]
+  primaryKeyColumns?: string[],
+  dialect: Dialect = currentDialect()
 ): string[] {
   if (!columns || columns.length === 0 || !row || row.length === 0) {
     throw new Error('Columns and row must not be empty');
@@ -140,12 +146,12 @@ export function buildWhereConditions(
   for (const col of targetCols) {
     const colIdx = columns.findIndex((c) => c.name.toLowerCase() === col.name.toLowerCase());
     const val = colIdx >= 0 ? row[colIdx] : null;
-    const colName = escapeIdentifier(col.name);
+    const colName = escapeIdentifier(col.name, dialect);
 
     if (val === null || val === undefined) {
       conditions.push(`${colName} IS NULL`);
     } else {
-      conditions.push(`${colName} = ${formatSqlLiteral(val)}`);
+      conditions.push(`${colName} = ${formatSqlLiteral(val, dialect, col.dataType)}`);
     }
   }
 
@@ -157,28 +163,32 @@ export function buildWhereConditions(
 }
 
 /**
- * Splits a multipart SQL identifier (e.g. [db].[dbo].[table] or db..table) into clean parts
+ * Splits a multipart SQL identifier (e.g. [db].[dbo].[table], db..table or `db`.`table`)
+ * into clean parts
  */
 export function splitIdentifierParts(targetStr: string): string[] {
   const parts: string[] = [];
   let current = '';
   let inBrackets = false;
+  let inBackticks = false;
 
   for (let i = 0; i < targetStr.length; i++) {
     const char = targetStr[i];
-    if (char === '[') {
+    if (char === '`' && !inBrackets) {
+      inBackticks = !inBackticks;
+    } else if (char === '[' && !inBackticks) {
       inBrackets = true;
-    } else if (char === ']') {
+    } else if (char === ']' && !inBackticks) {
       inBrackets = false;
-    } else if (char === '.' && !inBrackets) {
-      parts.push(current.trim().replace(/[\[\]]/g, ''));
+    } else if (char === '.' && !inBrackets && !inBackticks) {
+      parts.push(current.trim());
       current = '';
       continue;
     } else {
       current += char;
     }
   }
-  parts.push(current.trim().replace(/[\[\]]/g, ''));
+  parts.push(current.trim());
   return parts;
 }
 
@@ -235,7 +245,7 @@ export function parseTargetTableFromSql(
     .trim();
 
   // Match FROM, INTO, UPDATE, JOIN, TRUNCATE TABLE followed by multipart table identifier
-  const regex = /\b(?:FROM|INTO|UPDATE|JOIN|TRUNCATE\s+TABLE)\s+((?:\[[^\]]+\]|[a-zA-Z0-9_#$@]+)(?:\s*\.\s*(?:\[[^\]]+\]|[a-zA-Z0-9_#$@]*))*)/i;
+  const regex = /\b(?:FROM|INTO|UPDATE|JOIN|TRUNCATE\s+TABLE)\s+((?:\[[^\]]+\]|`[^`]+`|[a-zA-Z0-9_#$@]+)(?:\s*\.\s*(?:\[[^\]]+\]|`[^`]+`|[a-zA-Z0-9_#$@]*))*)/i;
   const match = cleanSql.match(regex);
 
   if (match && match[1]) {
@@ -258,7 +268,7 @@ export function extractAllTableNamesFromSql(
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .trim();
 
-  const regex = /\b(?:FROM|JOIN)\s+((?:\[[^\]]+\]|[a-zA-Z0-9_#$@]+)(?:\s*\.\s*(?:\[[^\]]+\]|[a-zA-Z0-9_#$@]*))*)/gi;
+  const regex = /\b(?:FROM|JOIN)\s+((?:\[[^\]]+\]|`[^`]+`|[a-zA-Z0-9_#$@]+)(?:\s*\.\s*(?:\[[^\]]+\]|`[^`]+`|[a-zA-Z0-9_#$@]*))*)/gi;
   const results: { schema?: string; tableName: string }[] = [];
   const seen = new Set<string>();
 
@@ -284,7 +294,8 @@ export function extractAllTableNamesFromSql(
  */
 export function generateInsertStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row } = params;
-  const fullTableName = formatTableName(tableName, schema, database);
+  const dialect = params.dialect ?? currentDialect();
+  const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 
   const insertColsWithIdx = columns
@@ -292,11 +303,16 @@ export function generateInsertStatement(params: GenerateDmlParams): string {
     .filter((item) => !item.col.isIdentity);
 
   if (insertColsWithIdx.length === 0) {
-    return `${timeHeader}\nINSERT INTO ${fullTableName} DEFAULT VALUES;`;
+    const defaults = dialect.engine === 'mysql' ? '() VALUES ()' : 'DEFAULT VALUES';
+    return `${timeHeader}\nINSERT INTO ${fullTableName} ${defaults};`;
   }
 
-  const colNames = insertColsWithIdx.map((item) => escapeIdentifier(item.col.name)).join(', ');
-  const values = insertColsWithIdx.map((item) => formatSqlLiteral(row[item.idx])).join(', ');
+  const colNames = insertColsWithIdx
+    .map((item) => escapeIdentifier(item.col.name, dialect))
+    .join(', ');
+  const values = insertColsWithIdx
+    .map((item) => formatSqlLiteral(row[item.idx], dialect, item.col.dataType))
+    .join(', ');
 
   return `${timeHeader}\nINSERT INTO ${fullTableName} (${colNames})\nVALUES (${values});`;
 }
@@ -306,7 +322,8 @@ export function generateInsertStatement(params: GenerateDmlParams): string {
  */
 export function generateUpdateStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row, primaryKeyColumns } = params;
-  const fullTableName = formatTableName(tableName, schema, database);
+  const dialect = params.dialect ?? currentDialect();
+  const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 
   // Identity columns can never be updated
@@ -337,11 +354,22 @@ export function generateUpdateStatement(params: GenerateDmlParams): string {
   const setClauses = setCols.map((c) => {
     const idx = columns.findIndex((col) => col.name.toLowerCase() === c.name.toLowerCase());
     const val = idx >= 0 ? row[idx] : null;
-    return `  ${escapeIdentifier(c.name)} = ${formatSqlLiteral(val)}`;
+    return `  ${escapeIdentifier(c.name, dialect)} = ${formatSqlLiteral(val, dialect, c.dataType)}`;
   });
 
-  const whereConditions = buildWhereConditions(columns, row, primaryKeyColumns);
+  const whereConditions = buildWhereConditions(columns, row, primaryKeyColumns, dialect);
   const whereClause = whereConditions.join('\n  AND ');
+
+  if (dialect.engine === 'mysql') {
+    // MySQL cannot check the affected row count and roll back inside a plain script, so the
+    // statement is capped at one row instead.
+    return `${timeHeader}
+UPDATE ${fullTableName}
+SET
+${setClauses.join(',\n')}
+WHERE ${whereClause}
+LIMIT 1;`;
+  }
 
   return `${timeHeader}
 IF @@TRANCOUNT <> 0 THROW 50000, 'Existing transaction detected; aborting execution.', 1;
@@ -366,11 +394,19 @@ END CATCH;`;
  */
 export function generateDeleteStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row, primaryKeyColumns } = params;
-  const fullTableName = formatTableName(tableName, schema, database);
+  const dialect = params.dialect ?? currentDialect();
+  const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 
-  const whereConditions = buildWhereConditions(columns, row, primaryKeyColumns);
+  const whereConditions = buildWhereConditions(columns, row, primaryKeyColumns, dialect);
   const whereClause = whereConditions.join('\n  AND ');
+
+  if (dialect.engine === 'mysql') {
+    return `${timeHeader}
+DELETE FROM ${fullTableName}
+WHERE ${whereClause}
+LIMIT 1;`;
+  }
 
   return `${timeHeader}
 IF @@TRANCOUNT <> 0 THROW 50000, 'Existing transaction detected; aborting execution.', 1;

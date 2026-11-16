@@ -1,4 +1,4 @@
-package mssql
+package sqlshared
 
 import (
 	"context"
@@ -16,8 +16,9 @@ import (
 const excelMaxDataRows = 1_048_575
 
 // ExportDatabaseTablesExcel writes row data for explicitly selected base tables only.
-func (s *Server) ExportDatabaseTablesExcel(
+func ExportDatabaseTablesExcel(
 	ctx context.Context,
+	s ExcelSource,
 	database string,
 	refs []model.ExcelTableRef,
 	path string,
@@ -70,10 +71,10 @@ func (s *Server) ExportDatabaseTablesExcel(
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		sheet := uniqueExcelSheetName(table.Schema+"."+table.Name, usedNames)
-		info, err := s.writeExcelTableData(ctx, workbook, database, table, sheet, styles)
+		sheet := uniqueExcelSheetName(s.TableLabel(table), usedNames)
+		info, err := writeExcelTableData(ctx, s, workbook, database, table, sheet, styles)
 		if err != nil {
-			return result, fmt.Errorf("export %s.%s: %w", table.Schema, table.Name, err)
+			return result, fmt.Errorf("export %s: %w", s.TableLabel(table), err)
 		}
 		indexInfo = append(indexInfo, info)
 		result.ColumnCount += info.Columns
@@ -83,7 +84,7 @@ func (s *Server) ExportDatabaseTablesExcel(
 		}
 		if progress != nil {
 			progress(model.ExcelExportProgress{
-				Current: i + 1, Total: len(selected), Table: table.Schema + "." + table.Name,
+				Current: i + 1, Total: len(selected), Table: s.TableLabel(table),
 				Sheets: len(indexInfo), Rows: result.TotalRows, Columns: result.ColumnCount,
 			})
 		}
@@ -99,12 +100,13 @@ func (s *Server) ExportDatabaseTablesExcel(
 	if err := workbook.SaveAs(path); err != nil {
 		return result, err
 	}
-	result.ExecutionTimeMS = elapsedMillis(started)
+	result.ExecutionTimeMS = ElapsedMillis(started)
 	return result, nil
 }
 
-func (s *Server) writeExcelTableData(
+func writeExcelTableData(
 	ctx context.Context,
+	s ExcelSource,
 	workbook *excelize.File,
 	database string,
 	table model.TableItem,
@@ -115,18 +117,11 @@ func (s *Server) writeExcelTableData(
 	if _, err := workbook.NewSheet(sheet); err != nil {
 		return info, err
 	}
-	conn, err := s.DB.Conn(ctx)
+	rows, release, err := s.OpenTableRows(ctx, database, table)
 	if err != nil {
 		return info, err
 	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, "USE "+QuoteIdentifier(database)); err != nil {
-		return info, err
-	}
-	rows, err := conn.QueryContext(ctx, "SELECT * FROM "+QualifiedTable(table.Schema, table.Name))
-	if err != nil {
-		return info, err
-	}
+	defer release()
 	defer rows.Close()
 	columns, err := rows.Columns()
 	if err != nil {
@@ -172,7 +167,7 @@ func (s *Server) writeExcelTableData(
 			if i < len(types) {
 				typeName = types[i].DatabaseTypeName()
 			}
-			row[i] = excelCellValue(normalizeValue(value, typeName))
+			row[i] = excelCellValue(s.NormalizeValue(value, typeName))
 		}
 		if err := writer.SetRow(fmt.Sprintf("A%d", rowNumber), row); err != nil {
 			return info, err

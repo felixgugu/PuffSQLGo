@@ -1,3 +1,5 @@
+import { currentDialect } from '@/dialects';
+
 export interface ExtractedStatement {
   sql: string;
   isSelection: boolean;
@@ -28,6 +30,10 @@ export interface LineMeta {
 export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: LineMeta[] } {
   const lines = fullText.split(/\r?\n/);
   const lineMetas: LineMeta[] = [];
+  const dialect = currentDialect();
+  const identOpen = dialect.identifierQuote.open;
+  const identClose = dialect.identifierQuote.close;
+  const goPattern = dialect.usesGoBatches ? /^GO(?:\s+(\d+))?(?:\s+--.*)?$/i : null;
 
   let inSingleQuote = false;
   let inBracket = false;
@@ -51,11 +57,12 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
 
       const trimmedCode = currentLineCode.trim();
       const goMatch =
+        goPattern !== null &&
         commentDepth === 0 &&
         !inSingleQuote &&
         !inBracket &&
         !inDoubleQuote &&
-        /^GO(?:\s+(\d+))?(?:\s+--.*)?$/i.exec(trimmedCode);
+        goPattern.exec(trimmedCode);
       const isGo = Boolean(goMatch);
       const goCount = goMatch && goMatch[1] ? parseInt(goMatch[1], 10) : 1;
       const isBlank = (lines[currentLineIndex] ?? '').trim() === '';
@@ -95,6 +102,10 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
     }
 
     if (inSingleQuote) {
+      if (ch === '\\' && dialect.mysqlLexing) {
+        i += 2;
+        continue;
+      }
       if (ch === "'") {
         if (nextCh === "'") {
           i += 2;
@@ -107,8 +118,8 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
     }
 
     if (inBracket) {
-      if (ch === ']') {
-        if (nextCh === ']') {
+      if (ch === identClose) {
+        if (nextCh === identClose) {
           i += 2;
           continue;
         }
@@ -119,6 +130,10 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
     }
 
     if (inDoubleQuote) {
+      if (ch === '\\' && dialect.mysqlLexing) {
+        i += 2;
+        continue;
+      }
       if (ch === '"') {
         if (nextCh === '"') {
           i += 2;
@@ -136,6 +151,12 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
       continue;
     }
 
+    if (ch === '#' && dialect.mysqlLexing) {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+
     if (ch === '/' && nextCh === '*') {
       commentDepth = 1;
       i += 2;
@@ -148,7 +169,7 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
       continue;
     }
 
-    if (ch === '[') {
+    if (ch === identOpen) {
       inBracket = true;
       i++;
       continue;
@@ -167,11 +188,12 @@ export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: L
   if (currentLineIndex < lines.length) {
     const trimmedCode = currentLineCode.trim();
     const goMatch =
+      goPattern !== null &&
       commentDepth === 0 &&
       !inSingleQuote &&
       !inBracket &&
       !inDoubleQuote &&
-      /^GO(?:\s+(\d+))?(?:\s+--.*)?$/i.exec(trimmedCode);
+      goPattern.exec(trimmedCode);
     const isGo = Boolean(goMatch);
     const goCount = goMatch && goMatch[1] ? parseInt(goMatch[1], 10) : 1;
     const isBlank = (lines[currentLineIndex] ?? '').trim() === '';
@@ -402,6 +424,9 @@ export function splitSqlStatements(fullText: string): string[] {
   if (!fullText || !fullText.trim()) return [];
 
   const statements: string[] = [];
+  const dialect = currentDialect();
+  const identOpen = dialect.identifierQuote.open;
+  const identClose = dialect.identifierQuote.close;
   let current = '';
   let inSingleQuote = false;
   let inBracket = false;
@@ -436,15 +461,28 @@ export function splitSqlStatements(fullText: string): string[] {
       continue;
     }
 
-    if (ch === '-' && nextCh === '-') {
+    const inQuoted = inSingleQuote || inBracket || inDoubleQuote;
+    if (!inQuoted && ch === '-' && nextCh === '-') {
       inLineComment = true;
       current += ch + nextCh;
       i++;
       continue;
     }
 
-    if (ch === '/' && nextCh === '*') {
+    if (!inQuoted && ch === '#' && dialect.mysqlLexing) {
+      inLineComment = true;
+      current += ch;
+      continue;
+    }
+
+    if (!inQuoted && ch === '/' && nextCh === '*') {
       commentDepth = 1;
+      current += ch + nextCh;
+      i++;
+      continue;
+    }
+
+    if ((inSingleQuote || inDoubleQuote) && ch === '\\' && dialect.mysqlLexing) {
       current += ch + nextCh;
       i++;
       continue;
@@ -465,8 +503,8 @@ export function splitSqlStatements(fullText: string): string[] {
 
     if (inBracket) {
       current += ch;
-      if (ch === ']') {
-        if (nextCh === ']') {
+      if (ch === identClose) {
+        if (nextCh === identClose) {
           current += nextCh;
           i++;
         } else {
@@ -495,7 +533,7 @@ export function splitSqlStatements(fullText: string): string[] {
       continue;
     }
 
-    if (ch === '[') {
+    if (ch === identOpen) {
       inBracket = true;
       current += ch;
       continue;

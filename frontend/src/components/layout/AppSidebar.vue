@@ -356,7 +356,7 @@
                           class="w-2.5 h-2.5 text-dark-500 group-hover:text-dark-300 flex-shrink-0"
                         />
                         <Table2 class="w-3 h-3 text-accent flex-shrink-0" />
-                        <span class="text-dark-400 text-xxs flex-shrink-0">{{ table.schema }}.</span>
+                        <span v-if="connectionStore.getDialectFor(conn.id).showSchema" class="text-dark-400 text-xxs flex-shrink-0">{{ table.schema }}.</span>
                         <span class="truncate flex-1">{{ table.name }}</span>
                         <span
                           v-if="activeLocatedKey === tableKey(conn.id, db, table.schema, table.name)"
@@ -501,7 +501,7 @@
                           class="w-2.5 h-2.5 text-dark-500 group-hover:text-dark-300 flex-shrink-0"
                         />
                         <FileText class="w-3 h-3 text-dark-400 flex-shrink-0" />
-                        <span class="text-dark-400 text-xxs flex-shrink-0">{{ view.schema }}.</span>
+                        <span v-if="connectionStore.getDialectFor(conn.id).showSchema" class="text-dark-400 text-xxs flex-shrink-0">{{ view.schema }}.</span>
                         <span class="truncate flex-1">{{ view.name }}</span>
                         <span
                           v-if="activeLocatedKey === tableKey(conn.id, db, view.schema, view.name)"
@@ -618,7 +618,7 @@
                       :title="`${proc.schema}.${proc.name} (Stored Procedure)`"
                     >
                       <Cog class="w-3 h-3 text-dark-400 flex-shrink-0" />
-                      <span class="text-dark-400 text-xxs flex-shrink-0">{{ proc.schema }}.</span>
+                      <span v-if="connectionStore.getDialectFor(conn.id).showSchema" class="text-dark-400 text-xxs flex-shrink-0">{{ proc.schema }}.</span>
                       <span class="truncate flex-1">{{ proc.name }}</span>
                       <span
                         v-if="activeLocatedKey === tableKey(conn.id, db, proc.schema, proc.name)"
@@ -678,7 +678,7 @@
                       :title="`${func.schema}.${func.name} (Function)`"
                     >
                       <Code2 class="w-3 h-3 text-dark-400 flex-shrink-0" />
-                      <span class="text-dark-400 text-xxs flex-shrink-0">{{ func.schema }}.</span>
+                      <span v-if="connectionStore.getDialectFor(conn.id).showSchema" class="text-dark-400 text-xxs flex-shrink-0">{{ func.schema }}.</span>
                       <span class="truncate flex-1">{{ func.name }}</span>
                       <span
                         v-if="activeLocatedKey === tableKey(conn.id, db, func.schema, func.name)"
@@ -1648,6 +1648,8 @@ const objectMenuItems = computed(() => {
   const isView = contextMenu.objectType === 'VIEW';
   const isProc = contextMenu.objectType === 'PROCEDURE';
   const isFunc = contextMenu.objectType === 'FUNCTION';
+  const dialect = connectionStore.getDialectFor(contextMenu.connId);
+  const capabilities = dialect.capabilities;
 
   const items: any[] = [
     {
@@ -1663,12 +1665,14 @@ const objectMenuItems = computed(() => {
       icon: Table2,
       command: handleOpenData,
     });
-    items.push({
-      label: t('sidebar.tableStructure'),
-      icon: List,
-      command: handleOpenStructure,
-    });
-    if (isTable) {
+    if (capabilities.structureViewer) {
+      items.push({
+        label: t('sidebar.tableStructure'),
+        icon: List,
+        command: handleOpenStructure,
+      });
+    }
+    if (isTable && capabilities.columnEditor) {
       items.push({
         label: t('columnEditor.addAction'),
         icon: Plus,
@@ -1701,19 +1705,24 @@ const objectMenuItems = computed(() => {
     items.push({
       label: t('sidebar.scriptCreate'),
       icon: FileText,
-      command: handleGenerateCreateTableDdl,
+      // The CREATE TABLE generator emits T-SQL; other engines ask the server for the DDL.
+      command: capabilities.objectScripts
+        ? handleGenerateCreateTableDdl
+        : () => handleViewDefinition(contextMenu.connId, contextMenu.database, contextMenu.schema, contextMenu.tableName, 'TABLE'),
     });
-    items.push({
-      label: t('sidebar.importTsv'),
-      icon: ArrowUpFromLine,
-      command: handleTsvImport,
-    });
+    if (capabilities.tsvImport) {
+      items.push({
+        label: t('sidebar.importTsv'),
+        icon: ArrowUpFromLine,
+        command: handleTsvImport,
+      });
+    }
   }
   if (isView || isProc || isFunc) {
     items.push({
       label: t('sidebar.viewDefinition'),
       icon: FileCode,
-      command: () => handleViewDefinition(contextMenu.connId, contextMenu.database, contextMenu.schema, contextMenu.tableName),
+      command: () => handleViewDefinition(contextMenu.connId, contextMenu.database, contextMenu.schema, contextMenu.tableName, contextMenu.objectType),
     });
   }
   if (isProc) {
@@ -1825,11 +1834,13 @@ const dbMenuItems = computed(() => {
       disabled: true,
     },
     { separator: true },
-    {
-      label: t('sidebar.exportDbSchemaCsv'),
-      icon: FileDown,
-      command: () => handleOpenExportSchemaModal(conn, db),
-    },
+    ...(connectionStore.getDialectFor(conn.id).capabilities.schemaCsvExport
+      ? [{
+          label: t('sidebar.exportDbSchemaCsv'),
+          icon: FileDown,
+          command: () => handleOpenExportSchemaModal(conn, db),
+        }]
+      : []),
     {
       label: t('sidebar.exportSelectedTablesExcel'),
       icon: FileSpreadsheet,
@@ -1953,7 +1964,9 @@ const columnMenuItems = computed(() => {
     icon: Copy,
     command: () => copyName(columnContextMenu.columnName),
   }];
-  if (columnContextMenu.editable) {
+  const canEditColumns =
+    connectionStore.getDialectFor(columnContextMenu.connId).capabilities.columnEditor;
+  if (columnContextMenu.editable && canEditColumns) {
     items.push(
       { separator: true },
       {
@@ -2089,6 +2102,12 @@ const explorerObjectMenuItems = computed(() => {
       icon: FileCode,
       command: () => handleOpenTriggerDefinition(),
     });
+  }
+
+  // The maintenance scripts below are T-SQL; engines without them only get the entries above.
+  if (!connectionStore.getDialectFor(explorerObjectContext.connId).capabilities.objectScripts) {
+    while (items.length > 0 && items[items.length - 1].separator) items.pop();
+    return items;
   }
 
   items.push({
@@ -2329,7 +2348,7 @@ async function handleOpenStructure() {
 
 function handleTableDragStart(e: DragEvent, connId: string, db: string, schema: string, table: string) {
   if (!e.dataTransfer) return;
-  const sql = generateTableSelectSql(schema, table);
+  const sql = generateTableSelectSql(schema, table, connectionStore.getDialectFor(connId));
   e.dataTransfer.setData(
     'application/sqlight-table',
     JSON.stringify({ connId, db, schema, table, sql })
@@ -2393,7 +2412,11 @@ async function handleGenerateSelect() {
       console.warn('Switch DB failed:', e);
     }
   }
-  const sql = generateTableSelectSql(contextMenu.schema, contextMenu.tableName);
+  const sql = generateTableSelectSql(
+    contextMenu.schema,
+    contextMenu.tableName,
+    connectionStore.getDialectFor(contextMenu.connId)
+  );
   workspaceStore.addSqlTab(
     sql,
     `${contextMenu.tableName}.sql`,
@@ -2441,15 +2464,28 @@ async function handleGenerateCreateTableDdl() {
   contextMenu.visible = false;
 }
 
-async function handleViewDefinition(connId: string, database: string, schema: string, name: string) {
+async function handleViewDefinition(
+  connId: string,
+  database: string,
+  schema: string,
+  name: string,
+  kind?: 'TABLE' | 'VIEW' | 'PROCEDURE' | 'FUNCTION'
+) {
   try {
     if (connectionStore.activeConnectionId !== connId) {
       await connectionStore.connect(connId);
     }
-    const def = await schemaStore.getObjectDefinition(connId, database, schema, name);
+    const dialect = connectionStore.getDialectFor(connId);
+    const def = await schemaStore.getObjectDefinition(connId, database, schema, name, kind);
     if (def) {
       workspaceStore.addSqlTab(def, `${schema}.${name}.sql`);
       workspaceStore.showToast(t('sidebar.loadedSqlDef', { schema, name }), 'success', 2500);
+    } else if (dialect.engine !== 'mssql') {
+      workspaceStore.addSqlTab(
+        dialect.definitionSql(database, schema, name, kind ?? 'PROCEDURE') + '\n',
+        `${name}.sql`
+      );
+      workspaceStore.showToast(t('sidebar.cannotReadDef'), 'info', 2500);
     } else {
       const fallback = `-- 提示：未能直接讀取到 OBJECT_DEFINITION（可能為加密物件或缺少 VIEW DEFINITION 權限）
 USE [${database}];
@@ -2469,6 +2505,13 @@ GO
 
 function handleGenerateExec() {
   const { database, schema, tableName } = contextMenu;
+  const dialect = connectionStore.getDialectFor(contextMenu.connId);
+  if (dialect.engine !== 'mssql') {
+    workspaceStore.addSqlTab(dialect.callProcedureSql(database, schema, tableName), `CALL_${tableName}.sql`);
+    workspaceStore.showToast(t('sidebar.generatedExecTemplate', { schema, table: tableName }), 'success', 2500);
+    contextMenu.visible = false;
+    return;
+  }
   const sql = `-- ============================================================
 -- 執行預存程序: [${schema}].[${tableName}]
 -- 產生時間: ${new Date().toLocaleString()}
@@ -2494,6 +2537,13 @@ GO
 
 function handleGenerateFuncSelect() {
   const { database, schema, tableName } = contextMenu;
+  const dialect = connectionStore.getDialectFor(contextMenu.connId);
+  if (dialect.engine !== 'mssql') {
+    workspaceStore.addSqlTab(dialect.callFunctionSql(database, schema, tableName), `SELECT_${tableName}.sql`);
+    workspaceStore.showToast(t('sidebar.generatedFuncTemplate', { schema, table: tableName }), 'success', 2500);
+    contextMenu.visible = false;
+    return;
+  }
   const sql = `-- ============================================================
 -- 呼叫函數: [${schema}].[${tableName}]
 -- 產生時間: ${new Date().toLocaleString()}
@@ -2528,7 +2578,7 @@ async function locateTable(options: ExtractedTableIdentifier & { database?: stri
     options.database ||
     workspaceStore.activeTab?.database ||
     connectionStore.activeDatabase ||
-    'master';
+    connectionStore.getDialectFor(targetConnId).fallbackDatabase;
 
   // Ensure connection is active
   if (connectionStore.activeConnectionId !== targetConnId || connectionStore.status !== 'connected') {

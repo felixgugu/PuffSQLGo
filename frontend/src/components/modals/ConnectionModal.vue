@@ -13,7 +13,7 @@
       <span>
         {{ editProfile ? $t('connectionModal.editTitle') : (initialProfile ? $t('connectionModal.duplicateTitle') : $t('connectionModal.newTitle')) }}
       </span>
-      <span class="text-xxs font-normal text-dark-400 font-mono">Microsoft SQL Server · TDS</span>
+      <span class="text-xxs font-normal text-dark-400 font-mono">{{ dialect.label }} · {{ dialect.protocol }}</span>
     </template>
 
     <form @submit.prevent="handleSave" class="space-y-4 text-xs">
@@ -43,6 +43,32 @@
         </div>
       </div>
 
+      <!-- Database engine: fixed once the profile exists -->
+      <div class="flex items-center justify-between px-3 py-2 rounded-md bg-dark-850/60 border border-dark-750/70">
+        <span class="text-xxs font-medium text-dark-400 flex items-center gap-1.5">
+          <Database class="w-3 h-3 text-accent" />
+          {{ $t('connectionModal.engine') }}
+        </span>
+        <div class="flex items-center space-x-1.5">
+          <button
+            v-for="option in DIALECTS"
+            :key="option.engine"
+            type="button"
+            :disabled="!!editProfile"
+            @click="selectEngine(option.engine)"
+            class="px-2 py-0.5 rounded-md text-xxs font-medium transition-all border disabled:cursor-not-allowed"
+            :class="[
+              form.engine === option.engine
+                ? 'bg-dark-750 border-dark-600 text-dark-100'
+                : 'bg-dark-900/50 border-dark-800 text-dark-400 hover:text-dark-200 hover:border-dark-700 disabled:opacity-40'
+            ]"
+            :title="editProfile ? $t('connectionModal.engineLocked') : option.label"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+
       <!-- Section 1: Server & Database Card -->
       <div class="rounded-md bg-dark-850/50 border border-dark-750/80 p-3.5 space-y-3 transition-colors hover:border-dark-700">
         <div class="flex items-center justify-between text-xs font-semibold text-dark-200">
@@ -66,7 +92,7 @@
               <SqInput
                 v-model="form.name"
                 required
-                placeholder="e.g. Local Development MSSQL"
+                :placeholder="`e.g. Local Development ${dialect.shortLabel}`"
                 :invalid="isDuplicateName"
                 class="w-full"
               />
@@ -107,11 +133,13 @@
           </div>
 
           <div>
-            <label class="block text-dark-300 font-medium text-xxs mb-1">{{ $t('connectionModal.defaultDatabaseRequired') }}</label>
+            <label class="block text-dark-300 font-medium text-xxs mb-1">
+              {{ dialect.defaultDatabase ? $t('connectionModal.defaultDatabaseRequired') : $t('connectionModal.defaultDatabaseOptional') }}
+            </label>
             <SqInput
               v-model="form.database"
-              required
-              placeholder="master"
+              :required="!!dialect.defaultDatabase"
+              :placeholder="dialect.defaultDatabase"
               class="w-full font-mono"
             />
           </div>
@@ -131,7 +159,7 @@
             <SqInput
               v-model="form.username"
               required
-              placeholder="sa"
+              :placeholder="dialect.defaultUsername"
               class="w-full font-mono"
             />
           </div>
@@ -347,7 +375,8 @@ import SqCheckbox from '@/components/ui/SqCheckbox.vue';
 import SqButton from '@/components/ui/SqButton.vue';
 import { Check, Zap } from '@/components/icons';
 import SqChip from '@/components/ui/SqChip.vue';
-import type { ConnectionProfile } from '@/types/connection';
+import type { ConnectionProfile, DatabaseEngine } from '@/types/connection';
+import { DIALECTS, getDialect, mssqlDialect } from '@/dialects';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { generateDuplicateConnectionName } from '@/utils/connectionNameHelper';
@@ -433,12 +462,13 @@ function applyEnvironmentPreset(env: EnvironmentPreset) {
 const showPassword = ref(false);
 
 const form = reactive({
+  engine: 'mssql' as DatabaseEngine,
   name: '',
   alias: '',
   host: 'localhost',
-  port: 1433,
-  database: 'master',
-  username: 'sa',
+  port: mssqlDialect.defaultPort,
+  database: mssqlDialect.defaultDatabase,
+  username: mssqlDialect.defaultUsername,
   password: '',
   encrypt: false,
   trustServerCertificate: true,
@@ -455,6 +485,24 @@ const connectionLabelColor = computed(() =>
   resolveConnectionLabelColor(form.color?.trim(), settingsStore.colorMode)
 );
 
+const dialect = computed(() => getDialect(form.engine));
+
+/**
+ * Switches the engine of a new profile. Fields still holding the previous engine's defaults move
+ * to the new engine's defaults; anything the user typed is kept.
+ */
+function selectEngine(engine: DatabaseEngine) {
+  if (props.editProfile || engine === form.engine) return;
+  const previous = getDialect(form.engine);
+  const next = getDialect(engine);
+  if (form.port === previous.defaultPort) form.port = next.defaultPort;
+  if (form.database === previous.defaultDatabase) form.database = next.defaultDatabase;
+  if (form.username === previous.defaultUsername) form.username = next.defaultUsername;
+  if (form.name === `New ${previous.shortLabel}`) form.name = `New ${next.shortLabel}`;
+  form.engine = engine;
+  testResult.value = null;
+}
+
 const isDuplicateName = computed(() => {
   return connectionStore.isNameDuplicate(form.name, props.editProfile?.id);
 });
@@ -465,6 +513,7 @@ watch(
     if (!props.isOpen) return;
 
     if (props.editProfile) {
+      form.engine = getDialect(props.editProfile.engine).engine;
       form.name = props.editProfile.name;
       form.alias = props.editProfile.alias || '';
       form.host = props.editProfile.host;
@@ -477,6 +526,7 @@ watch(
       form.color = props.editProfile.color || '';
       form.modificationPrompt = props.editProfile.modificationPrompt ?? false;
     } else if (props.initialProfile) {
+      form.engine = getDialect(props.initialProfile.engine).engine;
       form.name = generateDuplicateConnectionName(
         props.initialProfile.name,
         connectionStore.connections.map((c) => c.name)
@@ -492,12 +542,13 @@ watch(
       form.color = props.initialProfile.color || '';
       form.modificationPrompt = props.initialProfile.modificationPrompt ?? false;
     } else {
-      form.name = 'New SQL Server';
+      form.engine = 'mssql';
+      form.name = `New ${mssqlDialect.shortLabel}`;
       form.alias = '';
       form.host = 'localhost';
-      form.port = 1433;
-      form.database = 'master';
-      form.username = 'sa';
+      form.port = mssqlDialect.defaultPort;
+      form.database = mssqlDialect.defaultDatabase;
+      form.username = mssqlDialect.defaultUsername;
       form.password = '';
       form.encrypt = false;
       form.trustServerCertificate = true;
@@ -523,7 +574,7 @@ async function handleTest() {
       id: props.editProfile?.id,
       name: form.name,
       alias: form.alias.trim() || undefined,
-      engine: 'mssql',
+      engine: form.engine,
       host: form.host,
       port: form.port,
       database: form.database,
@@ -535,7 +586,7 @@ async function handleTest() {
       modificationPrompt: form.modificationPrompt,
       copyPasswordFrom: copyFrom,
     });
-    testResult.value = { success: true, message: '已成功連線至 Microsoft SQL Server。' };
+    testResult.value = { success: true, message: `已成功連線至 ${dialect.value.label}。` };
   } catch (err: unknown) {
     testResult.value = {
       success: false,
@@ -554,7 +605,7 @@ async function handleSave() {
       id: props.editProfile?.id,
       name: form.name,
       alias: form.alias.trim() || undefined,
-      engine: 'mssql',
+      engine: form.engine,
       host: form.host,
       port: form.port,
       database: form.database,

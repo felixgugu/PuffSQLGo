@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
-import { ref, computed, reactive } from 'vue';
+import { ref, computed, reactive, watch } from 'vue';
 import type { ConnectionProfile, ConnectionStatus } from '@/types/connection';
 import { connectionService, type SaveConnectionPayload } from '@/services/connectionService';
 import { schemaService } from '@/services/schemaService';
 import { queryService } from '@/services/queryService';
 import { useSchemaStore } from './schemaStore';
 import { useWorkspaceStore } from './workspaceStore';
+import { getDialect, setCurrentDialect, type Dialect } from '@/dialects';
 
 const STORAGE_DATABASES_KEY = 'sqlight_cached_databases';
 const STORAGE_LAST_CONNECTION_KEY = 'sqlight_last_connection_id';
@@ -40,6 +41,27 @@ function loadLastDbByConn(): Record<string, string> {
     console.warn('Failed to parse last database by conn:', e);
   }
   return {};
+}
+
+/** Initial database list shown before the server has been asked, per dialect. */
+function placeholderDatabases(dialect: Dialect, preferred?: string): string[] {
+  return Array.from(new Set([preferred ?? '', ...dialect.systemDatabases].filter(Boolean)));
+}
+
+/**
+ * Picks the database to land on when none is known: the dialect's fallback when the server has
+ * it (SQL Server `master`), otherwise the first user database, otherwise the first one listed.
+ */
+function pickDefaultDatabase(dialect: Dialect, names: string[]): string {
+  if (dialect.fallbackDatabase && names.includes(dialect.fallbackDatabase)) {
+    return dialect.fallbackDatabase;
+  }
+  if (!dialect.fallbackDatabase) {
+    const system = new Set(dialect.systemDatabases.map((name) => name.toLowerCase()));
+    const user = names.find((name) => !system.has(name.toLowerCase()));
+    if (user) return user;
+  }
+  return names[0] || dialect.fallbackDatabase;
 }
 
 function saveLastDbByConn(map: Record<string, string>) {
@@ -96,16 +118,25 @@ export const useConnectionStore = defineStore('connection', () => {
       return list;
     }
     const profile = connections.value.find((c) => c.id === connectionId);
-    if (profile?.database) {
-      const defaults = [profile.database, 'master', 'tempdb', 'model', 'msdb'];
-      return Array.from(new Set(defaults));
-    }
-    return ['master', 'tempdb', 'model', 'msdb'];
+    return placeholderDatabases(getDialect(profile?.engine), profile?.database);
   }
 
   const activeConnection = computed(() => {
     return connections.value.find((c) => c.id === activeConnectionId.value) ?? null;
   });
+
+  /** Dialect of the active connection (SQL Server while nothing is connected). */
+  const activeDialect = computed<Dialect>(() => getDialect(activeConnection.value?.engine));
+
+  /** Database to assume when none is selected ("" for engines without a mandatory one). */
+  const defaultDatabase = computed(() => activeDialect.value.fallbackDatabase);
+
+  // SQL helpers in utils/ read the current dialect as their default.
+  watch(activeDialect, (dialect) => setCurrentDialect(dialect), { immediate: true });
+
+  function getDialectFor(connectionId?: string | null): Dialect {
+    return getDialect(getConnectionById(connectionId)?.engine);
+  }
 
   function getConnectionById(id?: string | null): ConnectionProfile | null {
     if (!id) return null;
@@ -146,18 +177,18 @@ export const useConnectionStore = defineStore('connection', () => {
             lastDbByConn[target.id] ||
             localStorage.getItem(STORAGE_LAST_DATABASE_KEY) ||
             target.database ||
-            'master';
+            getDialect(target.engine).fallbackDatabase;
           activeDatabase.value = targetDb;
 
           const cachedDbs = databasesByConn[target.id];
           if (cachedDbs && cachedDbs.length > 0) {
             availableDatabases.value = cachedDbs.includes(targetDb) ? cachedDbs : [targetDb, ...cachedDbs];
           } else {
-            availableDatabases.value = Array.from(new Set([targetDb, 'master', 'tempdb', 'model', 'msdb']));
+            availableDatabases.value = placeholderDatabases(getDialect(target.engine), targetDb);
           }
 
           try {
-            await connect(target.id, targetDb);
+            await connect(target.id, targetDb || undefined);
           } catch (e) {
             console.warn('Auto-connect on startup deferred:', e);
             status.value = 'disconnected';
@@ -271,11 +302,22 @@ export const useConnectionStore = defineStore('connection', () => {
       if (myEpoch !== connectEpoch) return;
 
       const profile = connections.value.find((c) => c.id === id);
-      const targetDb = preferredDatabase || lastDbByConn[id] || profile?.database || 'master';
+      const dialect = getDialect(profile?.engine);
+      let targetDb =
+        preferredDatabase || lastDbByConn[id] || profile?.database || dialect.fallbackDatabase;
+
+      if (!targetDb) {
+        // The engine has no mandatory database (MySQL): land on the first user database.
+        const names = (await schemaService.getDatabases(id)).map((d) => d.name);
+        if (myEpoch !== connectEpoch) return;
+        targetDb = pickDefaultDatabase(dialect, names);
+      }
 
       // Ensure backend session switches to the target database before committing active targets
-      await schemaService.switchDatabase(id, targetDb);
-      if (myEpoch !== connectEpoch) return;
+      if (targetDb) {
+        await schemaService.switchDatabase(id, targetDb);
+        if (myEpoch !== connectEpoch) return;
+      }
 
       activeConnectionId.value = id;
       recordLastConnection(id);
@@ -354,7 +396,7 @@ export const useConnectionStore = defineStore('connection', () => {
         if (activeConnectionId.value === targetId) {
           availableDatabases.value = names;
           if (!names.includes(activeDatabase.value)) {
-            activeDatabase.value = names.includes('master') ? 'master' : names[0] || 'master';
+            activeDatabase.value = pickDefaultDatabase(getDialectFor(targetId), names);
             recordLastDatabase(targetId, activeDatabase.value);
           }
         }
@@ -384,6 +426,9 @@ export const useConnectionStore = defineStore('connection', () => {
     connections,
     activeConnectionId,
     activeConnection,
+    activeDialect,
+    defaultDatabase,
+    getDialectFor,
     status,
     activeDatabase,
     activeSpid,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"puffsql/internal/model"
+	"puffsql/internal/sqlshared"
 )
 
 func (s *Server) Execute(
@@ -175,122 +176,16 @@ func (s *Server) Execute(
 	}
 
 	phase(onPhase, "done")
-	var rows uint64
-	hasTruncated := false
-	for _, set := range result.ResultSets {
-		rows += uint64(set.RowCount)
-		hasTruncated = hasTruncated || set.IsTruncated
-	}
-	result.AffectedRows = rows
-	if hasTruncated && maxRows != nil {
-		result.Messages = append(result.Messages, model.QueryMessage{
-			Level: "warning",
-			Message: fmt.Sprintf(
-				"查詢結果已達最大限制 %d 筆，其餘資料已自動截斷以保護系統效能。", *maxRows,
-			),
-			Timestamp: time.Now().Format(time.RFC3339),
-		})
-	}
-	if executedBatches > 1 {
-		result.Messages = append(result.Messages, model.QueryMessage{
-			Level: "info",
-			Message: fmt.Sprintf(
-				"Query completed successfully. Executed %d batch(es), %d result set(s), %d rows returned.",
-				executedBatches, len(result.ResultSets), rows,
-			),
-			Timestamp: time.Now().Format(time.RFC3339),
-		})
-	} else {
-		result.Messages = append(result.Messages, model.QueryMessage{
-			Level: "info",
-			Message: fmt.Sprintf(
-				"Query completed successfully. %d result set(s), %d rows returned.",
-				len(result.ResultSets), rows,
-			),
-			Timestamp: time.Now().Format(time.RFC3339),
-		})
-	}
-	result.ExecutionTime = elapsedMillis(started)
+	sqlshared.AppendCompletion(&result, executedBatches, maxRows, started)
 	return result
 }
 
 func collectRows(rows *sql.Rows, maxRows *int, result *model.QueryResult) error {
-	for {
-		columns, err := rows.Columns()
-		if err != nil {
-			return err
-		}
-		if len(columns) > 0 {
-			set, err := readResultSet(rows, columns, maxRows)
-			if err != nil {
-				return err
-			}
-			result.ResultSets = append(result.ResultSets, set)
-		} else {
-			for rows.Next() {
-				// Drain non-tabular result sets so the driver can reach the next response.
-			}
-			if err := rows.Err(); err != nil {
-				return err
-			}
-		}
-		if !rows.NextResultSet() {
-			break
-		}
-	}
-	return rows.Err()
+	return sqlshared.CollectRows(rows, maxRows, result, normalizeValue)
 }
 
 func readResultSet(rows *sql.Rows, names []string, maxRows *int) (model.ResultSet, error) {
-	types, err := rows.ColumnTypes()
-	if err != nil {
-		return model.ResultSet{}, err
-	}
-	limit := math.MaxInt
-	if maxRows != nil && *maxRows >= 0 {
-		limit = *maxRows
-	}
-	set := model.ResultSet{
-		Columns: make([]model.ColumnDef, len(names)),
-		Rows:    [][]any{},
-	}
-	for i, name := range names {
-		dataType := "unknown"
-		if i < len(types) {
-			dataType = types[i].DatabaseTypeName()
-		}
-		set.Columns[i] = model.ColumnDef{Name: name, DataType: dataType, Nullable: true, Ordinal: i}
-	}
-
-	scans := make([]any, len(names))
-	values := make([]any, len(names))
-	for i := range scans {
-		scans[i] = &values[i]
-	}
-	for rows.Next() {
-		if err := rows.Scan(scans...); err != nil {
-			return model.ResultSet{}, err
-		}
-		set.TotalCount++
-		if len(set.Rows) >= limit {
-			set.IsTruncated = true
-			continue
-		}
-		row := make([]any, len(values))
-		for i, value := range values {
-			typeName := ""
-			if i < len(types) {
-				typeName = types[i].DatabaseTypeName()
-			}
-			row[i] = normalizeValue(value, typeName)
-		}
-		set.Rows = append(set.Rows, row)
-	}
-	if err := rows.Err(); err != nil {
-		return model.ResultSet{}, err
-	}
-	set.RowCount = len(set.Rows)
-	return set, nil
+	return sqlshared.ReadResultSet(rows, names, maxRows, normalizeValue)
 }
 
 func normalizeValue(value any, dataType string) any {
@@ -332,16 +227,8 @@ func normalizeValue(value any, dataType string) any {
 	}
 }
 
-// maxSafeJSInteger is JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1).
-const maxSafeJSInteger = 1<<53 - 1
-
-// safeInteger keeps integers the frontend can represent exactly as JSON numbers and sends larger
-// ones (bigint beyond ±2^53-1) as decimal text, because a JavaScript Number would round them.
 func safeInteger(value int64) any {
-	if value > maxSafeJSInteger || value < -maxSafeJSInteger {
-		return strconv.FormatInt(value, 10)
-	}
-	return value
+	return sqlshared.SafeInteger(value)
 }
 
 // formatTimeValue renders a scanned SQL Server date/time value as text for the grid.
@@ -424,11 +311,7 @@ func serverErrorCode(err error) *int {
 }
 
 func elapsedMillis(start time.Time) uint64 {
-	elapsed := time.Since(start)
-	if elapsed < 0 {
-		return 0
-	}
-	return uint64(elapsed.Milliseconds())
+	return sqlshared.ElapsedMillis(start)
 }
 
 func phase(onPhase func(string), name string) {

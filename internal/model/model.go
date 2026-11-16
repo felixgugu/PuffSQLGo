@@ -1,6 +1,6 @@
 package model
 
-// ConnectionConfig is the editable portion of a SQL Server connection.
+// ConnectionConfig is the editable portion of a database connection.
 type ConnectionConfig struct {
 	Name                   string  `json:"name"`
 	Alias                  *string `json:"alias,omitempty"`
@@ -26,7 +26,10 @@ type ConnectionProfile struct {
 // SaveConnectionRequest carries one connection modal submission.
 type SaveConnectionRequest struct {
 	ConnectionConfig
-	ID               *string `json:"id,omitempty"`
+	ID *string `json:"id,omitempty"`
+	// Engine selects the database engine of a new profile ("mssql" or "mysql"); empty means
+	// SQL Server. It is ignored when an existing profile is edited.
+	Engine           string  `json:"engine,omitempty"`
 	Password         *string `json:"password,omitempty"`
 	CopyPasswordFrom *string `json:"copyPasswordFrom,omitempty"`
 }

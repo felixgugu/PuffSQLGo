@@ -139,6 +139,7 @@
 
         <!-- DBA Diagnostics Toolbox Button & Popover -->
         <SqButton
+          v-if="connectionStore.activeDialect.capabilities.dbaQueries"
           aria-label="DBA 常用診斷維護工具箱"
           v-tooltip.bottom="'DBA 常用診斷維護工具箱'"
           @click="toggleDbaPopover"

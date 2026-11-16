@@ -99,8 +99,8 @@
     <!-- Flexible gap keeps the analysis options on the right edge -->
     <div class="flex-1" />
 
-    <!-- Execution analysis group: three independent toggles, one strip -->
-    <SqButtonGroup aria-label="執行分析選項">
+    <!-- Execution analysis group: three independent toggles, one strip (SQL Server only) -->
+    <SqButtonGroup v-if="showAnalysisOptions" aria-label="執行分析選項">
       <!-- Performance Analysis Toggle (SET STATISTICS IO, TIME ON) -->
       <SqButton
         :tone="queryStore.isStatsEnabled ? 'accent' : 'neutral'"
@@ -185,10 +185,18 @@ import {
   UnfoldVertical,
 } from '@/components/icons';
 import { useQueryStore } from '@/stores/queryStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import type { QueryRunMode, SqlEditorToolbarAction } from '@/types/editor';
 
 const { t } = useI18n();
 const queryStore = useQueryStore();
+const connectionStore = useConnectionStore();
+
+/** Statistics and plan toggles exist only for engines that implement them. */
+const showAnalysisOptions = computed(() => {
+  const capabilities = connectionStore.activeDialect.capabilities;
+  return capabilities.statistics || capabilities.executionPlan;
+});
 
 const emit = defineEmits<{
   (e: 'run-query', mode: QueryRunMode): void;

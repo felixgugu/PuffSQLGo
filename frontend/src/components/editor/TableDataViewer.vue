@@ -681,6 +681,7 @@ function handleGenerateDml(type: 'INSERT' | 'UPDATE' | 'DELETE') {
     columns: cols,
     row,
     primaryKeyColumns,
+    dialect: connectionStore.getDialectFor(connId),
   };
 
   let generated = '';
@@ -720,8 +721,9 @@ async function loadData() {
 
   try {
     const limit = queryStore.maxRows ?? 10000;
-    const db = props.schema ? connectionStore.activeDatabase || 'master' : 'master';
-    const sql = `SELECT TOP ${limit} * FROM [${props.schema}].[${props.tableName}];`;
+    const dialect = connectionStore.getDialectFor(connId);
+    const db = connectionStore.activeDatabase || dialect.fallbackDatabase;
+    const sql = dialect.selectLimitSql(dialect.qualifyTable(props.tableName, props.schema), limit);
     const res = await queryService.executeQuery(connId, db, sql, limit);
     if (res.resultSets.length > 0 && res.resultSets[0]) {
       columns.value = res.resultSets[0].columns;
@@ -763,7 +765,7 @@ onMounted(() => {
 // Refresh when the table data changes elsewhere (e.g. a TSV import for this table).
 const tableDataVersionKey = computed(() => {
   const connId = connectionStore.activeConnectionId ?? '';
-  const database = connectionStore.activeDatabase || 'master';
+  const database = connectionStore.activeDatabase || connectionStore.defaultDatabase;
   return `${connId}|${database}|${props.schema}|${props.tableName}`.toLowerCase();
 });
 
