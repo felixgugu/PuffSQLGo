@@ -125,7 +125,7 @@ func TestLiveMySQLThroughManager(t *testing.T) {
 	// Restore the fixture for the next run.
 	run("DELETE FROM `order items` WHERE order_id = 77;\n" +
 		"UPDATE `order items` SET amount = 1234567890123456789012345678.0123456789, note = 'auto' WHERE order_id = 9007199254740993;\n" +
-		"INSERT INTO `order items` (order_id, line_no, customer_id, amount, qty) VALUES (2, 1, 18446744073709551615, 12.50, 1);")
+		"INSERT INTO `order items` (order_id, line_no, customer_id, amount, qty) VALUES (2, 1, 2, 12.50, 1);")
 
 	// Cancel through the manager: context cancel, pool drop and KILL QUERY on a side connection.
 	requestID := "live-cancel"

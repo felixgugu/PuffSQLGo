@@ -13,7 +13,7 @@ import (
 )
 
 // Live tests run against a real MySQL server and are skipped unless PUFFSQL_LIVE_MYSQL=1.
-// They expect the fixture database `puff_shop` (customers, `order items`, v_customer_totals).
+// They expect the fixture database `puff_shop`; load it from testdata/puff_shop.sql.
 //
 //	PUFFSQL_MYSQL_HOST (default 127.0.0.1)   PUFFSQL_MYSQL_PORT (default 3306)
 //	PUFFSQL_MYSQL_USER                       PUFFSQL_MYSQL_PASSWORD
@@ -139,7 +139,7 @@ func TestLiveMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(customers) != 4 || !customers[0].IsIdentity || customers[0].Description == nil || *customers[0].Description != "客戶編號" {
+	if len(customers) != 5 || !customers[0].IsIdentity || customers[0].Description == nil || *customers[0].Description != "客戶編號" {
 		t.Fatalf("customers columns = %#v", customers)
 	}
 	if customers[3].Scale == nil || *customers[3].Scale != 3 {
@@ -172,7 +172,7 @@ func TestLiveExecuteKeepsValuesExact(t *testing.T) {
 	server := openLive(t)
 	result := server.Execute(context.Background(), nil,
 		"SELECT order_id, amount, total, flag, ratio, note, payload, shipped FROM `order items` ORDER BY order_id DESC;\n"+
-			"SELECT id, created_at FROM customers ORDER BY id DESC LIMIT 1;\n"+
+			"SELECT ref_no, created_at FROM customers WHERE id = 2;\n"+
 			"SELECT CAST('0000-00-00' AS CHAR) AS zero, NULL AS nothing, 1 = 1 AS truth",
 		nil, nil, nil, nil)
 	if failures := errorsOf(result); len(failures) > 0 {
@@ -347,7 +347,7 @@ func TestLiveExcelExports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if schema.TableCount != 2 || schema.ColumnCount != 15 {
+	if schema.TableCount != 2 || schema.ColumnCount != 16 {
 		t.Fatalf("schema export = %#v", schema)
 	}
 	data, err := server.ExportDatabaseTablesExcel(ctx, "puff_shop",
