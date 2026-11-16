@@ -313,7 +313,7 @@ func normalizeValue(value any, dataType string) any {
 			return string(typed)
 		}
 	case int64:
-		return typed
+		return safeInteger(typed)
 	case int32:
 		return typed
 	case int16:
@@ -322,7 +322,7 @@ func normalizeValue(value any, dataType string) any {
 		if typed > math.MaxInt64 {
 			return strconv.FormatUint(typed, 10)
 		}
-		return int64(typed)
+		return safeInteger(int64(typed))
 	case float64:
 		return typed
 	case float32:
@@ -330,6 +330,18 @@ func normalizeValue(value any, dataType string) any {
 	default:
 		return typed
 	}
+}
+
+// maxSafeJSInteger is JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1).
+const maxSafeJSInteger = 1<<53 - 1
+
+// safeInteger keeps integers the frontend can represent exactly as JSON numbers and sends larger
+// ones (bigint beyond ±2^53-1) as decimal text, because a JavaScript Number would round them.
+func safeInteger(value int64) any {
+	if value > maxSafeJSInteger || value < -maxSafeJSInteger {
+		return strconv.FormatInt(value, 10)
+	}
+	return value
 }
 
 // formatTimeValue renders a scanned SQL Server date/time value as text for the grid.

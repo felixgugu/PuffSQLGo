@@ -3,6 +3,7 @@ package mssql
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -167,6 +168,24 @@ func TestNormalizeValueKeepsBinaryCompactAndPreservesNull(t *testing.T) {
 	}
 	if value := normalizeValue(nil, "INT"); value != nil {
 		t.Fatalf("NULL became %#v", value)
+	}
+}
+
+func TestNormalizeValueKeepsLargeIntegersExact(t *testing.T) {
+	if value := normalizeValue(int64(9007199254740991), "BIGINT"); value != int64(9007199254740991) {
+		t.Fatalf("safe bigint = %#v", value)
+	}
+	if value := normalizeValue(int64(-9007199254740991), "BIGINT"); value != int64(-9007199254740991) {
+		t.Fatalf("safe negative bigint = %#v", value)
+	}
+	if value := normalizeValue(int64(9007199254740993), "BIGINT"); value != "9007199254740993" {
+		t.Fatalf("large bigint = %#v", value)
+	}
+	if value := normalizeValue(int64(math.MinInt64), "BIGINT"); value != "-9223372036854775808" {
+		t.Fatalf("min bigint = %#v", value)
+	}
+	if value := normalizeValue(uint64(9007199254740993), "BIGINT"); value != "9007199254740993" {
+		t.Fatalf("large uint64 = %#v", value)
 	}
 }
 

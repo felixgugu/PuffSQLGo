@@ -107,6 +107,15 @@ test('coerceEditedValue matches the inline editing rules of the previous grid', 
   assert.equal(coerceEditedValue('false', bitColumn), false);
 });
 
+test('coerceEditedValue keeps bigint values beyond the safe integer range as exact text', () => {
+  const bigColumn: ColumnDef = { name: 'id', dataType: 'bigint', nullable: false, ordinal: 0 };
+
+  assert.equal(coerceEditedValue('42', bigColumn), 42);
+  assert.equal(coerceEditedValue('9007199254740991', bigColumn), 9007199254740991);
+  assert.equal(coerceEditedValue('9223372036854775807', bigColumn), '9223372036854775807');
+  assert.equal(coerceEditedValue(' -9223372036854775808 ', bigColumn), '-9223372036854775808');
+});
+
 test('selection stats aggregate every range and report whole-column selections', () => {
   const table = makeTableStub({
     totalRows: 2,

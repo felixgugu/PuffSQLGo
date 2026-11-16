@@ -146,6 +146,10 @@ export function coerceEditedValue(raw: string, column: ColumnDef): CellValue {
   }
 
   if (trimmed !== '' && !Number.isNaN(Number(trimmed)) && NUMERIC_TYPES.includes(dataType)) {
+    // Integers beyond ±2^53-1 (bigint) stay as text: a JavaScript number would round them.
+    if (/^[+-]?\d+$/.test(trimmed) && !Number.isSafeInteger(Number(trimmed))) {
+      return trimmed;
+    }
     return Number(trimmed);
   }
 
