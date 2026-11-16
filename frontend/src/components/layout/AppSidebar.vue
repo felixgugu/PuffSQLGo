@@ -254,6 +254,8 @@
             <div
               @click="toggleDatabaseExpand(conn.id, db)"
               @contextmenu.prevent="openDbContextMenu($event, conn, db)"
+              @mouseenter="setHovered(db)"
+              @mouseleave="clearHovered"
               :class="[
                 'flex items-center space-x-1 px-1.5 py-0.5 rounded cursor-pointer transition-colors group',
                 connectionStore.activeConnectionId === conn.id && connectionStore.activeDatabase === db
