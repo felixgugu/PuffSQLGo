@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
-import {
-  currentDialect,
-  getDialect,
-  mssqlDialect,
-  mysqlDialect,
-  setCurrentDialect,
-} from '../src/dialects';
+import { describe, test } from 'node:test';
+import { getDialect, mssqlDialect, mysqlDialect } from '../src/dialects';
 import { generateBatchChangesScript } from '../src/utils/batchChangeGenerator';
 import {
   escapeIdentifier,
@@ -18,7 +12,10 @@ import {
   parseTargetTableFromSql,
 } from '../src/utils/sqlGenerator';
 import { wrapIdentifierIfNeeded } from '../src/utils/sqlParser';
-import { splitSqlBatches, splitSqlStatements } from '../src/utils/sqlStatementExtractor';
+import { extractStatementAtCursor, parseSqlLines, splitSqlBatches, splitSqlStatements } from '../src/utils/sqlStatementExtractor';
+import { analyzeSmartPasteContext } from '../src/utils/sqlSmartPaste';
+import { analyzeGuardedStatements } from '../src/utils/sqlStatementGuard';
+import { buildErrorDiagnosisPrompt } from '../src/utils/aiPromptBuilder';
 import { generateColumnSelectSql, generateTableSelectSql } from '../src/utils/tableSelectSql';
 import { MYSQL_SQL_FUNCTIONS, MYSQL_SQL_KEYWORDS, MYSQL_SQL_SNIPPETS } from '../src/utils/sqlKeywordsMySql';
 
@@ -28,13 +25,10 @@ function body(sql: string): string {
 }
 
 describe('dialects', () => {
-  afterEach(() => setCurrentDialect(mssqlDialect));
-
   test('unknown or missing engines resolve to SQL Server, the default dialect', () => {
     assert.equal(getDialect(undefined), mssqlDialect);
     assert.equal(getDialect(''), mssqlDialect);
     assert.equal(getDialect('mysql'), mysqlDialect);
-    assert.equal(currentDialect(), mssqlDialect);
   });
 
   test('MySQL quotes identifiers with backticks and qualifies tables by database', () => {
@@ -172,20 +166,36 @@ describe('dialects', () => {
     });
   });
 
-  test('statement splitting follows the active dialect', () => {
-    const script = "SELECT 'a;b' AS `x;y`; # note; with 'quote\nSELECT 'it\\'s; fine';\nGO\nSELECT 3;";
-
-    setCurrentDialect(mysqlDialect);
-    assert.deepEqual(splitSqlStatements("SELECT 'a;b' AS `x;y`; # note; with 'quote\nSELECT 'it\\'s; fine'"), [
+  test('statement splitting follows the dialect it is given', () => {
+    const mysqlScript = "SELECT 'a;b' AS `x;y`; # note; with 'quote\nSELECT 'it\\'s; fine'";
+    assert.deepEqual(splitSqlStatements(mysqlScript, mysqlDialect), [
       "SELECT 'a;b' AS `x;y`",
       "# note; with 'quote\nSELECT 'it\\'s; fine'",
     ]);
-    // GO is not a batch separator in MySQL: the script stays one batch.
-    assert.equal(splitSqlBatches(script).length, 1);
+    // GO is not a batch separator in MySQL: the script stays one batch and one statement range.
+    const withGo = 'SELECT 1\nGO\nSELECT 2';
+    assert.equal(splitSqlBatches(withGo, mysqlDialect).length, 1);
+    assert.equal(extractStatementAtCursor(withGo, 2, undefined, mysqlDialect).sql, withGo);
 
-    setCurrentDialect(mssqlDialect);
-    assert.deepEqual(splitSqlBatches('SELECT 1;\nGO\nSELECT 2;'), ['SELECT 1;', 'SELECT 2;']);
+    // Without a dialect the helpers behave as SQL Server, exactly as before.
+    assert.deepEqual(splitSqlBatches(withGo), ['SELECT 1', 'SELECT 2']);
+    assert.equal(extractStatementAtCursor(withGo, 2).sql, '');
     assert.deepEqual(splitSqlStatements('SELECT [a;b] FROM t; SELECT 2'), ['SELECT [a;b] FROM t', 'SELECT 2']);
+  });
+
+  test('editor helpers quote and scan with the dialect of the tab', () => {
+    assert.equal(analyzeSmartPasteContext('', 0, 'order', mysqlDialect).textToInsert, '`order`');
+    assert.equal(analyzeSmartPasteContext('', 0, 'order').textToInsert, '[order]');
+    // A "#" comment holding a quote must not swallow the next line as a string literal.
+    const commented = "# it's a note\nDELETE FROM t;";
+    assert.equal(parseSqlLines(commented, mysqlDialect).lineMetas[1]?.codeOnly, 'DELETE FROM t;');
+    assert.equal(parseSqlLines(commented).lineMetas[1]?.codeOnly, '');
+    assert.equal(
+      analyzeGuardedStatements(commented, mysqlDialect).length,
+      analyzeGuardedStatements('DELETE FROM t;', mysqlDialect).length
+    );
+    assert.match(buildErrorDiagnosisPrompt({ message: 'boom', dialect: mysqlDialect }), /MySQL \(MySQL SQL\)/);
+    assert.match(buildErrorDiagnosisPrompt({ message: 'boom' }), /Microsoft SQL Server \(T-SQL\)/);
   });
 
   test('MySQL routine helpers use information_schema, SHOW CREATE and CALL', () => {

@@ -1,4 +1,4 @@
-import { currentDialect, type Dialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 import { wrapIdentifierIfNeeded } from './sqlParser';
 
 /**
@@ -15,7 +15,7 @@ import { wrapIdentifierIfNeeded } from './sqlParser';
 export function generateTableSelectSql(
   schema: string | null | undefined,
   table: string,
-  dialect: Dialect = currentDialect()
+  dialect: Dialect = mssqlDialect
 ): string {
   return `SELECT * FROM ${tableTarget(schema, table, dialect)};\n`;
 }
@@ -38,7 +38,7 @@ export function generateColumnSelectSql(
   schema: string | null | undefined,
   table: string,
   column: string,
-  dialect: Dialect = currentDialect()
+  dialect: Dialect = mssqlDialect
 ): string {
   const cleanColumn = wrapIdentifierIfNeeded(column.trim(), dialect);
   return `SELECT ${cleanColumn} FROM ${tableTarget(schema, table, dialect)};\n`;

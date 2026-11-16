@@ -292,7 +292,7 @@ export const useQueryStore = defineStore('query', () => {
       let result: QueryResult;
       let actualPlanXml: string | null = null;
 
-      const batches = splitSqlBatches(sql);
+      const batches = splitSqlBatches(sql, useConnectionStore().getDialectFor(connectionId));
 
       if (isShowplan) {
         try {
@@ -786,7 +786,10 @@ export const useQueryStore = defineStore('query', () => {
       const isMultiSet = tab.result.resultSets.length > 1;
 
       if (isMultiSet) {
-        const statements = splitSqlStatements(tab.sql);
+        const statements = splitSqlStatements(
+          tab.sql,
+          useConnectionStore().getDialectFor(tab.connectionId)
+        );
         if (statements.length === tab.result.resultSets.length && statements[setIndex]) {
           targetSql = statements[setIndex]!;
         }

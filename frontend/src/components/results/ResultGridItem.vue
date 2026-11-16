@@ -1015,6 +1015,9 @@ const editability = computed(() => {
   return checkTableEditability({
     tab: currentTab.value,
     columns: props.resultSet.columns ?? [],
+    dialect: connectionStore.getDialectFor(
+      currentTab.value?.connectionId || connectionStore.activeConnectionId
+    ),
     getTableSchema: (tbl, cId, db) => {
       const conn = cId || currentTab.value?.connectionId || connectionStore.activeConnectionId || undefined;
       const dbase = db || currentTab.value?.database || connectionStore.activeDatabase || undefined;

@@ -241,6 +241,11 @@ const { t } = useI18n();
 const workspaceStore = useWorkspaceStore();
 const connectionStore = useConnectionStore();
 
+/** Dialect of the connection a dropped table belongs to (the active one when unknown). */
+function dropDialect(connId?: string) {
+  return connectionStore.getDialectFor(connId || connectionStore.activeConnectionId);
+}
+
 /** Starter statement for a tab created by dropping something that carries no SQL. */
 function defaultDropSql(): string {
   return connectionStore.activeDialect.engine === 'mysql'
@@ -885,7 +890,7 @@ function handleBarDrop(e: DragEvent) {
   const plainText = e.dataTransfer?.getData('text/plain') || '';
   const tableName = tableInfo?.table || 'Query';
   const sql = tableInfo?.sql || (tableInfo?.schema && tableInfo?.table
-    ? generateTableSelectSql(tableInfo.schema, tableInfo.table)
+    ? generateTableSelectSql(tableInfo.schema, tableInfo.table, dropDialect(tableInfo.connId))
     : plainText || defaultDropSql());
 
   try {
@@ -960,7 +965,7 @@ async function handleTabItemDrop(e: DragEvent, tab: WorkspaceTab) {
   const plainText = e.dataTransfer?.getData('text/plain') || '';
   const tableName = tableInfo?.table || 'Query';
   const sql = tableInfo?.sql || (tableInfo?.schema && tableInfo?.table
-    ? generateTableSelectSql(tableInfo.schema, tableInfo.table)
+    ? generateTableSelectSql(tableInfo.schema, tableInfo.table, dropDialect(tableInfo.connId))
     : plainText || defaultDropSql());
 
   try {

@@ -15,18 +15,3 @@ export function getDialect(engine?: string | null): Dialect {
 export function isDatabaseEngine(value: unknown): value is DatabaseEngine {
   return value === 'mssql' || value === 'mysql';
 }
-
-/**
- * The dialect of the connection the UI is currently working against. The connection store keeps
- * it in sync with the active connection; SQL helpers in `utils/` use it as their default so a
- * caller only passes a dialect explicitly when it targets a different connection.
- */
-let current: Dialect = mssqlDialect;
-
-export function currentDialect(): Dialect {
-  return current;
-}
-
-export function setCurrentDialect(dialect: Dialect): void {
-  current = dialect;
-}

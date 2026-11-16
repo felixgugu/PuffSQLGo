@@ -1,4 +1,4 @@
-import { currentDialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 
 export interface ExtractedStatement {
   sql: string;
@@ -27,10 +27,12 @@ export interface LineMeta {
  *
  * This accurately detects GO batch boundaries and statement boundaries.
  */
-export function parseSqlLines(fullText: string): { lines: string[]; lineMetas: LineMeta[] } {
+export function parseSqlLines(
+  fullText: string,
+  dialect: Dialect = mssqlDialect
+): { lines: string[]; lineMetas: LineMeta[] } {
   const lines = fullText.split(/\r?\n/);
   const lineMetas: LineMeta[] = [];
-  const dialect = currentDialect();
   const identOpen = dialect.identifierQuote.open;
   const identClose = dialect.identifierQuote.close;
   const goPattern = dialect.usesGoBatches ? /^GO(?:\s+(\d+))?(?:\s+--.*)?$/i : null;
@@ -270,10 +272,13 @@ function collectBatchRanges(
  * boundaries the cursor-based extractor resolves: GO separates batches, a batch with transactions
  * or control flow stays whole, everything else splits on top-level semicolons.
  */
-export function listStatementRanges(fullText: string): SqlStatementRange[] {
+export function listStatementRanges(
+  fullText: string,
+  dialect: Dialect = mssqlDialect
+): SqlStatementRange[] {
   if (!fullText || !fullText.trim()) return [];
 
-  const { lineMetas } = parseSqlLines(fullText);
+  const { lineMetas } = parseSqlLines(fullText, dialect);
   if (lineMetas.length === 0) return [];
 
   const ranges: SqlStatementRange[] = [];
@@ -293,7 +298,8 @@ export function listStatementRanges(fullText: string): SqlStatementRange[] {
 export function extractStatementAtCursor(
   fullText: string,
   cursorLineNumber: number,
-  selectionText?: string
+  selectionText?: string,
+  dialect: Dialect = mssqlDialect
 ): ExtractedStatement {
   // 1. If user has actively selected text, return the selection directly
   if (selectionText && selectionText.trim()) {
@@ -311,7 +317,7 @@ export function extractStatementAtCursor(
   const cursorLine = Math.max(1, Math.min(cursorLineNumber, lines.length));
 
   // A cursor on a GO line, or on a blank line between statements, resolves to no statement.
-  const range = listStatementRanges(fullText).find(
+  const range = listStatementRanges(fullText, dialect).find(
     (r) => cursorLine >= r.startLine && cursorLine <= r.endLine
   );
   if (!range) {
@@ -337,10 +343,13 @@ export interface SqlBatchItem {
 /**
  * Splits a full SQL script into separate executable batches with line numbers and repeat counts.
  */
-export function splitSqlBatchesWithMeta(fullText: string): SqlBatchItem[] {
+export function splitSqlBatchesWithMeta(
+  fullText: string,
+  dialect: Dialect = mssqlDialect
+): SqlBatchItem[] {
   if (!fullText || !fullText.trim()) return [];
 
-  const { lines, lineMetas } = parseSqlLines(fullText);
+  const { lines, lineMetas } = parseSqlLines(fullText, dialect);
   if (lineMetas.length === 0) return [];
 
   const batches: SqlBatchItem[] = [];
@@ -400,8 +409,8 @@ function flushBatchItem(
  * Accurately ignores 'GO' inside string literals, comments, or bracketed identifiers.
  * Respects repeat count (e.g. GO 5 repeats the batch 5 times).
  */
-export function splitSqlBatches(fullText: string): string[] {
-  const metaBatches = splitSqlBatchesWithMeta(fullText);
+export function splitSqlBatches(fullText: string, dialect: Dialect = mssqlDialect): string[] {
+  const metaBatches = splitSqlBatchesWithMeta(fullText, dialect);
   const result: string[] = [];
   for (const b of metaBatches) {
     for (let r = 0; r < b.repeatCount; r++) {
@@ -420,11 +429,10 @@ export function splitSqlBatches(fullText: string): string[] {
  * - Single-line comments: -- ...
  * - Multi-line comments: /* ... *\/ (including nested)
  */
-export function splitSqlStatements(fullText: string): string[] {
+export function splitSqlStatements(fullText: string, dialect: Dialect = mssqlDialect): string[] {
   if (!fullText || !fullText.trim()) return [];
 
   const statements: string[] = [];
-  const dialect = currentDialect();
   const identOpen = dialect.identifierQuote.open;
   const identClose = dialect.identifierQuote.close;
   let current = '';

@@ -6,6 +6,7 @@
  * second source of truth, and SQL Server skips the statement on its own when the whole script is
  * sent as one batch.
  */
+import { mssqlDialect, type Dialect } from '@/dialects';
 import { detectDangerousSqlStatements, type DangerousSqlKeyword } from './sqlGuard';
 import {
   listStatementRanges,
@@ -128,14 +129,17 @@ function trimToStatementStart(lines: string[], range: SqlStatementRange): SqlSta
  * — so they are read back per {@link commentedWindows} with one comment level removed, which
  * resolves to exactly the range the guard commented out in the first place.
  */
-export function analyzeGuardedStatements(fullText: string): GuardedStatement[] {
+export function analyzeGuardedStatements(
+  fullText: string,
+  dialect: Dialect = mssqlDialect
+): GuardedStatement[] {
   if (!fullText || !fullText.trim()) return [];
 
   const rawLines = fullText.split(/\r?\n/);
   const guarded: GuardedStatement[] = [];
 
-  const { lineMetas } = parseSqlLines(fullText);
-  for (const range of listStatementRanges(fullText)) {
+  const { lineMetas } = parseSqlLines(fullText, dialect);
+  for (const range of listStatementRanges(fullText, dialect)) {
     const trimmed = trimToStatementStart(rawLines, range);
     if (!trimmed) continue;
 
@@ -154,9 +158,9 @@ export function analyzeGuardedStatements(fullText: string): GuardedStatement[] {
       .slice(window.startLine - 1, window.endLine)
       .map((line) => (isGuardMarked(line) ? line.replace(/^-- ?/, '') : line));
     const local = inside.join('\n');
-    const parsed = parseSqlLines(local);
+    const parsed = parseSqlLines(local, dialect);
 
-    for (const range of listStatementRanges(local)) {
+    for (const range of listStatementRanges(local, dialect)) {
       const trimmed = trimToStatementStart(inside, range);
       if (!trimmed) continue;
 

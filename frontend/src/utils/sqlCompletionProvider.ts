@@ -3,7 +3,6 @@ import { useSchemaStore } from '@/stores/schemaStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { SQL_KEYWORDS, SQL_FUNCTIONS, SQL_SNIPPETS } from './sqlKeywords';
 import { MYSQL_SQL_KEYWORDS, MYSQL_SQL_FUNCTIONS, MYSQL_SQL_SNIPPETS } from './sqlKeywordsMySql';
-import { currentDialect } from '@/dialects';
 import {
   parseTableAliases,
   getCursorContext,
@@ -49,6 +48,9 @@ export function setupSqlCompletionProvider(): void {
       const schemaStore = useSchemaStore();
       const connStore = useConnectionStore();
 
+      // Suggestions come from the active connection's schema, so they are quoted and filtered
+      // with that same connection's dialect.
+      const dialect = connStore.activeDialect;
       const activeConnId = connStore.activeConnectionId;
       const activeDb = connStore.activeDatabase;
       const tables = schemaStore.getSchema(activeConnId ?? undefined, activeDb);
@@ -92,7 +94,7 @@ export function setupSqlCompletionProvider(): void {
                   .filter(Boolean)
                   .join('\n'),
               },
-              insertText: wrapIdentifierIfNeeded(col.name),
+              insertText: wrapIdentifierIfNeeded(col.name, dialect),
               sortText: col.isPrimaryKey ? `0_${col.name}` : `1_${col.name}`,
               range,
             });
@@ -114,7 +116,7 @@ export function setupSqlCompletionProvider(): void {
                   : monaco.languages.CompletionItemKind.Class,
               detail: `${t.kind === 'VIEW' ? 'View' : 'Table'} (${t.columns.length} cols)`,
               documentation: `Schema: ${t.schema} | Name: ${t.name}`,
-              insertText: wrapIdentifierIfNeeded(t.name),
+              insertText: wrapIdentifierIfNeeded(t.name, dialect),
               sortText: `0_${t.name}`,
               range,
             });
@@ -145,7 +147,7 @@ export function setupSqlCompletionProvider(): void {
                 `**Columns**: ${t.columns.map((c) => c.name).slice(0, 10).join(', ')}${t.columns.length > 10 ? '...' : ''}`,
               ].join('\n\n'),
             },
-            insertText: wrapIdentifierIfNeeded(t.name),
+            insertText: wrapIdentifierIfNeeded(t.name, dialect),
             sortText: `0_${t.name}`,
             range,
           });
@@ -158,7 +160,7 @@ export function setupSqlCompletionProvider(): void {
             label: s,
             kind: monaco.languages.CompletionItemKind.Module,
             detail: 'Schema',
-            insertText: wrapIdentifierIfNeeded(s),
+            insertText: wrapIdentifierIfNeeded(s, dialect),
             sortText: `1_${s}`,
             range,
           });
@@ -207,7 +209,7 @@ export function setupSqlCompletionProvider(): void {
                 documentation: {
                   value: `Table: \`${t.name}\` | Type: \`${col.dataType}\`${col.isPrimaryKey ? ' | Primary Key' : ''}`,
                 },
-                insertText: wrapIdentifierIfNeeded(col.name),
+                insertText: wrapIdentifierIfNeeded(col.name, dialect),
                 sortText: col.isPrimaryKey ? `0_0_${col.name}` : `0_1_${col.name}`,
                 range,
               });
@@ -217,7 +219,7 @@ export function setupSqlCompletionProvider(): void {
       }
 
       // 3.2 SQL Server Built-in Functions
-      const isMySql = currentDialect().engine === 'mysql';
+      const isMySql = dialect.engine === 'mysql';
       for (const fn of isMySql ? MYSQL_SQL_FUNCTIONS : SQL_FUNCTIONS) {
         suggestions.push({
           label: fn.name,
@@ -256,7 +258,7 @@ export function setupSqlCompletionProvider(): void {
               ? monaco.languages.CompletionItemKind.Interface
               : monaco.languages.CompletionItemKind.Class,
           detail: `${t.kind === 'VIEW' ? 'View' : 'Table'} • ${t.schema}`,
-          insertText: wrapIdentifierIfNeeded(t.name),
+          insertText: wrapIdentifierIfNeeded(t.name, dialect),
           sortText: `3_${t.name}`,
           range,
         });
@@ -271,7 +273,7 @@ export function setupSqlCompletionProvider(): void {
               label: col.name,
               kind: monaco.languages.CompletionItemKind.Field,
               detail: `${col.dataType} • ${t.name}`,
-              insertText: wrapIdentifierIfNeeded(col.name),
+              insertText: wrapIdentifierIfNeeded(col.name, dialect),
               sortText: `4_${col.name}`,
               range,
             });

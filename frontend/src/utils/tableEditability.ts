@@ -1,4 +1,4 @@
-import { currentDialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 import { extractAllTableNamesFromSql, parseTargetTableFromSql } from './sqlGenerator';
 import type { ColumnDef, QueryResultTab } from '@/types/query';
 import type { TableSchema, ColumnItem } from '@/types/schema';
@@ -18,6 +18,8 @@ export interface CheckEditabilityOptions {
   tab?: QueryResultTab | null;
   columns: ColumnDef[];
   getTableSchema: (tableName: string, connId?: string, database?: string) => TableSchema | undefined;
+  /** Dialect of the tab's connection; SQL Server when omitted. */
+  dialect?: Dialect;
 }
 
 /**
@@ -29,6 +31,7 @@ export interface CheckEditabilityOptions {
  */
 export function checkTableEditability(options: CheckEditabilityOptions): TableEditabilityResult {
   const { tab, columns, getTableSchema } = options;
+  const defaultSchema = (options.dialect ?? mssqlDialect).defaultSchema;
 
   if (!tab) {
     return {
@@ -57,7 +60,7 @@ export function checkTableEditability(options: CheckEditabilityOptions): TableEd
 
   if (tab.tableName) {
     targetTable = {
-      schema: tab.schema || currentDialect().defaultSchema,
+      schema: tab.schema || defaultSchema,
       tableName: tab.tableName,
     };
   } else if (sql.trim()) {
@@ -74,14 +77,14 @@ export function checkTableEditability(options: CheckEditabilityOptions): TableEd
 
     if (allTables.length === 1 && allTables[0]) {
       targetTable = {
-        schema: allTables[0].schema || currentDialect().defaultSchema,
+        schema: allTables[0].schema || defaultSchema,
         tableName: allTables[0].tableName,
       };
     } else {
       const parsedTarget = parseTargetTableFromSql(sql);
       if (parsedTarget) {
         targetTable = {
-          schema: parsedTarget.schema || currentDialect().defaultSchema,
+          schema: parsedTarget.schema || defaultSchema,
           tableName: parsedTarget.tableName,
         };
       }

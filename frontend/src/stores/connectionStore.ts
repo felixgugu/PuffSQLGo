@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia';
-import { ref, computed, reactive, watch } from 'vue';
+import { ref, computed, reactive } from 'vue';
 import type { ConnectionProfile, ConnectionStatus } from '@/types/connection';
 import { connectionService, type SaveConnectionPayload } from '@/services/connectionService';
 import { schemaService } from '@/services/schemaService';
 import { queryService } from '@/services/queryService';
 import { useSchemaStore } from './schemaStore';
 import { useWorkspaceStore } from './workspaceStore';
-import { getDialect, setCurrentDialect, type Dialect } from '@/dialects';
+import { getDialect, type Dialect } from '@/dialects';
 
 const STORAGE_DATABASES_KEY = 'sqlight_cached_databases';
 const STORAGE_LAST_CONNECTION_KEY = 'sqlight_last_connection_id';
@@ -130,9 +130,6 @@ export const useConnectionStore = defineStore('connection', () => {
 
   /** Database to assume when none is selected ("" for engines without a mandatory one). */
   const defaultDatabase = computed(() => activeDialect.value.fallbackDatabase);
-
-  // SQL helpers in utils/ read the current dialect as their default.
-  watch(activeDialect, (dialect) => setCurrentDialect(dialect), { immediate: true });
 
   function getDialectFor(connectionId?: string | null): Dialect {
     return getDialect(getConnectionById(connectionId)?.engine);

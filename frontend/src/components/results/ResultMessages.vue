@@ -212,6 +212,7 @@ function handleDiagnoseWithAi(msg: SessionMessageItem | QueryMessage) {
     lineNumber: msg.lineNumber,
     sql,
     database: db,
+    dialect: workspaceStore.getTabDialect(),
   });
 }
 

@@ -1,5 +1,5 @@
 import type { CellValue } from '@/types/query';
-import { currentDialect, type Dialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 
 export interface ColumnInfo {
   name: string;
@@ -15,7 +15,7 @@ export interface GenerateDmlParams {
   columns: ColumnInfo[];
   row: CellValue[];
   primaryKeyColumns?: string[];
-  /** Dialect of the target connection; defaults to the active connection's dialect. */
+  /** Dialect of the target connection; SQL Server when omitted. */
   dialect?: Dialect;
 }
 
@@ -23,7 +23,7 @@ export interface GenerateDmlParams {
  * Quotes an identifier for the dialect: `[name]` for SQL Server (doubling `]`), `` `name` `` for
  * MySQL (doubling the backtick).
  */
-export function escapeIdentifier(name: string, dialect: Dialect = currentDialect()): string {
+export function escapeIdentifier(name: string, dialect: Dialect = mssqlDialect): string {
   return dialect.quoteIdentifier(name);
 }
 
@@ -48,7 +48,7 @@ export function formatCurrentDateTime(date = new Date()): string {
  */
 export function formatSqlLiteral(
   val: CellValue | undefined,
-  dialect: Dialect = currentDialect(),
+  dialect: Dialect = mssqlDialect,
   dataType?: string
 ): string {
   if (val === null || val === undefined) {
@@ -87,7 +87,7 @@ export function formatTableName(
   tableName: string,
   schema?: string,
   database?: string,
-  dialect: Dialect = currentDialect()
+  dialect: Dialect = mssqlDialect
 ): string {
   return dialect.qualifyTable(tableName, schema, database);
 }
@@ -101,7 +101,7 @@ export function buildWhereConditions(
   columns: ColumnInfo[],
   row: CellValue[],
   primaryKeyColumns?: string[],
-  dialect: Dialect = currentDialect()
+  dialect: Dialect = mssqlDialect
 ): string[] {
   if (!columns || columns.length === 0 || !row || row.length === 0) {
     throw new Error('Columns and row must not be empty');
@@ -294,7 +294,7 @@ export function extractAllTableNamesFromSql(
  */
 export function generateInsertStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row } = params;
-  const dialect = params.dialect ?? currentDialect();
+  const dialect = params.dialect ?? mssqlDialect;
   const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 
@@ -322,7 +322,7 @@ export function generateInsertStatement(params: GenerateDmlParams): string {
  */
 export function generateUpdateStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row, primaryKeyColumns } = params;
-  const dialect = params.dialect ?? currentDialect();
+  const dialect = params.dialect ?? mssqlDialect;
   const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 
@@ -394,7 +394,7 @@ END CATCH;`;
  */
 export function generateDeleteStatement(params: GenerateDmlParams): string {
   const { tableName, schema, database, columns, row, primaryKeyColumns } = params;
-  const dialect = params.dialect ?? currentDialect();
+  const dialect = params.dialect ?? mssqlDialect;
   const fullTableName = formatTableName(tableName, schema, database, dialect);
   const timeHeader = `-- 自動產生語法 時間: ${formatCurrentDateTime()}`;
 

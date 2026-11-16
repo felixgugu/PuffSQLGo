@@ -1,4 +1,4 @@
-import { currentDialect, type Dialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 
 export interface TableAliasMap {
   // Key: alias or tableName (lowercase) -> Value: actual tableName
@@ -204,7 +204,7 @@ export function getCursorContext(textUntilCursor: string): CursorContext {
  * Quotes an identifier only when it needs it: it contains spaces or special characters, or it is
  * a reserved keyword. Uses the dialect's quoting (`[name]` or `` `name` ``).
  */
-export function wrapIdentifierIfNeeded(name: string, dialect: Dialect = currentDialect()): string {
+export function wrapIdentifierIfNeeded(name: string, dialect: Dialect = mssqlDialect): string {
   if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
     if (SQL_RESERVED_IDENTIFIERS.has(name.toLowerCase())) {
       return dialect.quoteIdentifier(name);

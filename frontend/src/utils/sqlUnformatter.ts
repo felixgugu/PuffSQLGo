@@ -1,3 +1,4 @@
+import { mssqlDialect, type Dialect } from '@/dialects';
 import { parseSqlLines } from './sqlStatementExtractor';
 
 /**
@@ -12,10 +13,10 @@ import { parseSqlLines } from './sqlStatementExtractor';
  *
  * Keywords are never case-folded; this is a whitespace transform, not a formatter.
  */
-export function unformatSql(sql: string): string {
+export function unformatSql(sql: string, dialect: Dialect = mssqlDialect): string {
   if (!sql || !sql.trim()) return sql;
 
-  const { lines, lineMetas } = parseSqlLines(sql);
+  const { lines, lineMetas } = parseSqlLines(sql, dialect);
   const goLines = new Set(
     lineMetas.filter((meta) => meta.isGo).map((meta) => meta.lineIndex)
   );

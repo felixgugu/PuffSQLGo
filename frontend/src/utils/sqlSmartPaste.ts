@@ -1,3 +1,4 @@
+import { mssqlDialect, type Dialect } from '@/dialects';
 import { wrapIdentifierIfNeeded } from './sqlParser';
 
 export interface SmartPasteResult {
@@ -34,9 +35,10 @@ function cleanSqlForAnalysis(sql: string): string {
 export function analyzeSmartPasteContext(
   fullSql: string,
   cursorOffset: number,
-  rawColName: string
+  rawColName: string,
+  dialect: Dialect = mssqlDialect
 ): SmartPasteResult {
-  const colName = wrapIdentifierIfNeeded(rawColName);
+  const colName = wrapIdentifierIfNeeded(rawColName, dialect);
 
   if (!fullSql) {
     return { textToInsert: colName };

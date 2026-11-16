@@ -5,6 +5,7 @@
  * The glyph only exists while the pointer is over the statement, except for statements that are
  * already disabled: those keep it pinned on their first line, so the state stays visible at a glance.
  */
+import type { Dialect } from '@/dialects';
 import type * as Monaco from 'monaco-editor';
 import { t } from '@/i18n';
 import {
@@ -27,7 +28,9 @@ export interface EditorStatementGuard {
 
 export function useEditorStatementGuard(
   monaco: typeof Monaco,
-  editor: Monaco.editor.IStandaloneCodeEditor
+  editor: Monaco.editor.IStandaloneCodeEditor,
+  /** Dialect of the connection this editor's tab runs against, read on every scan. */
+  getDialect: () => Dialect
 ): EditorStatementGuard {
   const decorations = editor.createDecorationsCollection();
   const listeners: Monaco.IDisposable[] = [];
@@ -48,7 +51,7 @@ export function useEditorStatementGuard(
       analyzedVersion = -1;
       return;
     }
-    statements = analyzeGuardedStatements(model.getValue());
+    statements = analyzeGuardedStatements(model.getValue(), getDialect());
     analyzedVersion = model.getVersionId();
   }
 

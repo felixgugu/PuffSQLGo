@@ -18,7 +18,7 @@ describe('the statement guard is wired into the one editor the app ships', () =>
     );
     assert.match(
       editor,
-      /if \(!props\.readOnly\) \{\s*statementGuard = useEditorStatementGuard\(monaco, editorInstance\);/,
+      /if \(!props\.readOnly\) \{\s*statementGuard = useEditorStatementGuard\(monaco, editorInstance, tabDialect\);/,
       'a read-only editor must not offer the switch'
     );
     assert.match(editor, /statementGuard\.dispose\(\)/, 'the guard must be torn down with the editor');

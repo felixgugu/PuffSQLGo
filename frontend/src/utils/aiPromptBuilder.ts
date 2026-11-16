@@ -1,4 +1,4 @@
-import { currentDialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 
 /**
  * AI Prompt Builder Utility
@@ -16,6 +16,8 @@ export interface ErrorDiagnosisContext {
   lineNumber?: number;
   sql?: string;
   database?: string;
+  /** Dialect of the connection the failing statement ran against; SQL Server when omitted. */
+  dialect?: Dialect;
 }
 
 export interface MissingIndexInfo {
@@ -86,7 +88,7 @@ export interface StatsAdviceContext {
  * Builds a structured diagnostic prompt for SQL errors.
  */
 export function buildErrorDiagnosisPrompt(ctx: ErrorDiagnosisContext): string {
-  const dialect = currentDialect();
+  const dialect = ctx.dialect ?? mssqlDialect;
   const parts: string[] = [
     `請針對以下 ${dialect.label} (${dialect.sqlName}) 執行錯誤進行深入診斷並提供修正方案：`,
     '',

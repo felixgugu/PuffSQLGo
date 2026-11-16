@@ -947,7 +947,7 @@ function getConnectionNameStyle(conn: ConnectionProfile): Record<string, string>
 
 function isPendingColumn(colName: string): boolean {
   if (!workspaceStore.pendingColumnToInsert) return false;
-  const wrapped = wrapIdentifierIfNeeded(colName);
+  const wrapped = wrapIdentifierIfNeeded(colName, workspaceStore.getTabDialect());
   return (
     workspaceStore.pendingColumnToInsert === wrapped ||
     workspaceStore.pendingColumnToInsert === colName
@@ -955,7 +955,8 @@ function isPendingColumn(colName: string): boolean {
 }
 
 function handleColumnDoubleClick(col: ColumnItem) {
-  const colText = wrapIdentifierIfNeeded(col.name);
+  // The name is inserted into the active editor, so it is quoted for that tab's connection.
+  const colText = wrapIdentifierIfNeeded(col.name, workspaceStore.getTabDialect());
   workspaceStore.setPendingColumnToInsert(colText);
   try {
     navigator.clipboard?.writeText(colText);

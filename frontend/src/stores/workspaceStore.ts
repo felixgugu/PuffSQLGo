@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import type { WorkspaceTab, BottomPanelTab, SqlEditorTab, TableDataTab, TableStructureTab, ExecutionPlanTab, ErDiagramTab } from '@/types/workspace';
 import { format as formatSql } from 'sql-formatter';
-import { currentDialect } from '@/dialects';
+import type { Dialect } from '@/dialects';
 import { unformatSql } from '@/utils/sqlUnformatter';
 import { useConnectionStore } from './connectionStore';
 import { useSqlFolderStore } from './sqlFolderStore';
@@ -596,12 +596,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return tableDataVersions.value[tableDataVersionKey(connId, database, schema, table)] ?? 0;
   }
 
+  /**
+   * Dialect of the connection a tab runs against: the tab's own connection when it is bound to
+   * one, otherwise the active connection.
+   */
+  function getTabDialect(tabId?: string | null): Dialect {
+    const connectionStore = useConnectionStore();
+    const tab = tabId ? tabs.value.find((item) => item.id === tabId) : activeTab.value;
+    return connectionStore.getDialectFor(tab?.connectionId || connectionStore.activeConnectionId);
+  }
+
   function formatActiveQuery(): void {
     const current = activeTab.value;
     if (current && current.type === 'sql_editor') {
       try {
         const formatted = formatSql(current.query, {
-          language: currentDialect().formatterLanguage,
+          language: getTabDialect(current.id).formatterLanguage,
           keywordCase: 'upper',
           tabWidth: 2,
         });
@@ -617,7 +627,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const current = activeTab.value;
     if (current && current.type === 'sql_editor') {
       try {
-        current.query = unformatSql(current.query);
+        current.query = unformatSql(current.query, getTabDialect(current.id));
         current.isDirty = true;
       } catch (err) {
         console.warn('Failed to unformat SQL:', err);
@@ -841,6 +851,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tableDataVersions,
     bumpTableDataVersion,
     getTableDataVersion,
+    getTabDialect,
     formatActiveQuery,
     unformatActiveQuery,
     setBottomPanelTab,

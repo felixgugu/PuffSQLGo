@@ -1,5 +1,5 @@
 import type { CellValue } from '@/types/query';
-import { currentDialect, type Dialect } from '@/dialects';
+import { mssqlDialect, type Dialect } from '@/dialects';
 import {
   escapeIdentifier,
   formatCurrentDateTime,
@@ -30,7 +30,7 @@ export interface BatchChangeParams {
   updates?: RowModification[];
   inserts?: InsertRowChange[];
   deletes?: DeleteRowChange[];
-  /** Dialect of the target connection; defaults to the active connection's dialect. */
+  /** Dialect of the target connection; SQL Server when omitted. */
   dialect?: Dialect;
   /**
    * Result column type names by column name. Lets a dialect write a numeric value that travelled
@@ -176,7 +176,7 @@ export function generateBatchChangesScript(params: BatchChangeParams): string {
     throw new Error('No row changes provided to generate batch change script');
   }
 
-  const dialect = params.dialect ?? currentDialect();
+  const dialect = params.dialect ?? mssqlDialect;
   const types = new Map<string, string>();
   for (const [column, type] of Object.entries(params.columnTypes ?? {})) {
     types.set(column.toLowerCase(), type);

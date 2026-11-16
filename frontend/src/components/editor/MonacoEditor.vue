@@ -32,6 +32,7 @@ import { setupSqlCompletionProvider } from '@/utils/sqlCompletionProvider';
 import { transientHighlightColors } from '@/utils/highlightColor';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import { extractStatementAtCursor, type ExtractedStatement } from '@/utils/sqlStatementExtractor';
 import { extractTableIdentifierAtCursor, type ExtractedTableIdentifier } from '@/utils/sqlIdentifierExtractor';
 import { analyzeSmartPasteContext } from '@/utils/sqlSmartPaste';
@@ -39,7 +40,6 @@ import { generateTableSelectSql } from '@/utils/tableSelectSql';
 import { dispatchClearGridSelection } from '@/utils/tabulatorGrid';
 import { useEditorStatementGuard, type EditorStatementGuard } from '@/composables/useEditorStatementGuard';
 import { format as formatSql } from 'sql-formatter';
-import { currentDialect } from '@/dialects';
 import { unformatSql } from '@/utils/sqlUnformatter';
 import type { QueryRunMode, SqlEditorToolbarAction } from '@/types/editor';
 
@@ -59,6 +59,7 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore();
 const workspaceStore = useWorkspaceStore();
+const connectionStore = useConnectionStore();
 const editorContainer = ref<HTMLDivElement | null>(null);
 let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null;
 let highlightDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
@@ -152,7 +153,8 @@ function getStatementAtCursor(): ExtractedStatement {
   const extracted = extractStatementAtCursor(
     docText,
     position.lineNumber,
-    selectedText
+    selectedText,
+    tabDialect()
   );
 
   if (extracted.range) {
@@ -291,7 +293,7 @@ function applySqlTransform(action: 'format' | 'unformat', transform: (sql: strin
   }
 
   // 2. If no selection: transform only current standalone statement at cursor
-  const extracted = extractStatementAtCursor(docText, position.lineNumber);
+  const extracted = extractStatementAtCursor(docText, position.lineNumber, undefined, tabDialect());
   if (!extracted.sql || !extracted.range) {
     return;
   }
@@ -325,10 +327,15 @@ function applySqlTransform(action: 'format' | 'unformat', transform: (sql: strin
   }
 }
 
+/** Dialect of the connection this editor's tab runs against. */
+function tabDialect() {
+  return workspaceStore.getTabDialect(props.tabId);
+}
+
 function formatCode() {
   applySqlTransform('format', (sql) =>
     formatSql(sql, {
-      language: currentDialect().formatterLanguage,
+      language: tabDialect().formatterLanguage,
       keywordCase: 'upper',
       tabWidth: settingsStore.editorTabSize || 2,
     })
@@ -336,7 +343,7 @@ function formatCode() {
 }
 
 function unformatCode() {
-  applySqlTransform('unformat', unformatSql);
+  applySqlTransform('unformat', (sql) => unformatSql(sql, tabDialect()));
 }
 
 function runEditorAction(action: SqlEditorToolbarAction) {
@@ -421,7 +428,7 @@ onMounted(() => {
 
   // Per-statement safety switch for UPDATE/INSERT/DELETE/ALTER/CREATE/DROP/TRUNCATE.
   if (!props.readOnly) {
-    statementGuard = useEditorStatementGuard(monaco, editorInstance);
+    statementGuard = useEditorStatementGuard(monaco, editorInstance, tabDialect);
   }
 
   editorInstance.onDidChangeModelContent(() => {
@@ -573,7 +580,7 @@ onMounted(() => {
       const fullSql = model.getValue();
       const cursorOffset = model.getOffsetAt(position);
 
-      const smartResult = analyzeSmartPasteContext(fullSql, cursorOffset, colText);
+      const smartResult = analyzeSmartPasteContext(fullSql, cursorOffset, colText, tabDialect());
       const textToInsert = smartResult.textToInsert;
 
       if (selection && !selection.isEmpty()) {
@@ -682,7 +689,11 @@ onMounted(() => {
         if (data.sql) {
           sql = data.sql;
         } else {
-          sql = generateTableSelectSql(data.schema, data.table);
+          sql = generateTableSelectSql(
+            data.schema,
+            data.table,
+            data.connId ? connectionStore.getDialectFor(data.connId) : tabDialect()
+          );
         }
       } catch {
         sql = e.dataTransfer.getData('text/plain') || '';

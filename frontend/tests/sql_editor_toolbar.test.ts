@@ -68,11 +68,11 @@ describe('SQL editor toolbar actions', () => {
     const monaco = readSource('src/components/editor/MonacoEditor.vue');
     assert.match(monaco, /function unformatCode\(\)/);
     assert.match(monaco, /KeyCode\.KeyM/);
-    assert.match(monaco, /applySqlTransform\('unformat', unformatSql\)/);
+    assert.match(monaco, /applySqlTransform\('unformat', \(sql\) => unformatSql\(sql, tabDialect\(\)\)\)/);
 
     const store = readSource('src/stores/workspaceStore.ts');
     assert.match(store, /function unformatActiveQuery\(\): void/);
-    assert.match(store, /current\.query = unformatSql\(current\.query\)/);
+    assert.match(store, /current\.query = unformatSql\(current\.query, getTabDialect\(current\.id\)\)/);
 
     const app = readSource('src/App.vue');
     assert.match(app, /function handleUnformatSql\(\)/);
