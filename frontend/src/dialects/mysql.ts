@@ -40,7 +40,7 @@ export const mysqlDialect: Dialect = {
     dbaQueries: false,
     builtinTemplates: false,
     columnEditor: false,
-    structureViewer: false,
+    structureViewer: true,
     objectScripts: false,
     tsvImport: false,
     schemaCsvExport: false,
@@ -67,6 +67,30 @@ export const mysqlDialect: Dialect = {
 
   selectLimitSql(qualifiedTable, limit) {
     return `SELECT * FROM ${qualifiedTable} LIMIT ${limit};`;
+  },
+
+  // COLUMN_TYPE already carries the full declaration ("decimal(38,10)", "bigint unsigned").
+  structureSql(database, schema, table) {
+    const owner = this.stringLiteral(databaseOf(database, schema));
+    return `
+SELECT
+    c.ORDINAL_POSITION AS Ordinal,
+    c.COLUMN_NAME AS ColumnName,
+    c.DATA_TYPE AS DataType,
+    c.COLUMN_TYPE AS FullType,
+    c.CHARACTER_MAXIMUM_LENGTH AS MaxLength,
+    c.NUMERIC_PRECISION AS NumericPrecision,
+    c.NUMERIC_SCALE AS NumericScale,
+    CASE WHEN c.IS_NULLABLE = 'YES' THEN 'YES' ELSE 'NO' END AS IsNullable,
+    CASE WHEN c.COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END AS IsPrimaryKey,
+    CASE WHEN c.EXTRA LIKE '%auto_increment%' THEN 1 ELSE 0 END AS IsIdentity,
+    c.COLUMN_DEFAULT AS DefaultValue,
+    c.COLLATION_NAME AS Collation,
+    c.COLUMN_COMMENT AS Description
+FROM information_schema.COLUMNS c
+WHERE c.TABLE_SCHEMA = ${owner} AND c.TABLE_NAME = ${this.stringLiteral(table)}
+ORDER BY c.ORDINAL_POSITION;
+    `.trim();
   },
 
   routineListSql(database) {

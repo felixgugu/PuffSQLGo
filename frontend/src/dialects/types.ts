@@ -76,6 +76,13 @@ export interface Dialect {
   /** `SELECT *` over an already quoted table name, capped at `limit` rows. */
   selectLimitSql(qualifiedTable: string, limit: number): string;
 
+  /**
+   * Column catalog query for the structure viewer. Result columns, in any order: Ordinal,
+   * ColumnName, DataType, FullType, MaxLength, NumericPrecision, NumericScale, IsNullable
+   * ('YES'/'NO'), IsPrimaryKey (1/0), IsIdentity (1/0), DefaultValue, Collation, Description.
+   */
+  structureSql(database: string, schema: string, table: string): string;
+
   /** Query returning (schema, name, type) rows for every procedure and function. */
   routineListSql(database: string): string;
   /** Query whose first cell holds (or, for MySQL, whose row contains) the object's source. */

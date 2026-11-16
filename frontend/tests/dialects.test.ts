@@ -207,7 +207,37 @@ describe('dialects', () => {
 
   test('SQL Server-only features are switched off for MySQL only', () => {
     for (const enabled of Object.values(mssqlDialect.capabilities)) assert.equal(enabled, true);
-    for (const enabled of Object.values(mysqlDialect.capabilities)) assert.equal(enabled, false);
+    assert.deepEqual(mysqlDialect.capabilities, {
+      executionPlan: false,
+      statistics: false,
+      dbaQueries: false,
+      builtinTemplates: false,
+      columnEditor: false,
+      structureViewer: true,
+      objectScripts: false,
+      tsvImport: false,
+      schemaCsvExport: false,
+    });
+  });
+
+  test('the structure viewer query returns the same columns for both dialects', () => {
+    const aliases = [
+      'Ordinal', 'ColumnName', 'DataType', 'FullType', 'MaxLength', 'NumericPrecision',
+      'NumericScale', 'IsNullable', 'IsPrimaryKey', 'IsIdentity', 'DefaultValue', 'Collation',
+      'Description',
+    ];
+    const mysql = mysqlDialect.structureSql('shop', 'shop', "order's");
+    const mssql = mssqlDialect.structureSql('Sales', 'dbo', "Order's");
+    for (const alias of aliases) {
+      assert.match(mysql, new RegExp(`AS ${alias}\\b`), `MySQL query lacks ${alias}`);
+      assert.match(mssql, new RegExp(`AS ${alias}\\b`), `SQL Server query lacks ${alias}`);
+    }
+    // MySQL filters by database (the "schema" the backend reports) and reads no SQL Server catalog.
+    assert.match(mysql, /FROM information_schema\.COLUMNS c\nWHERE c\.TABLE_SCHEMA = 'shop' AND c\.TABLE_NAME = 'order''s'/);
+    assert.match(mysql, /c\.COLUMN_TYPE AS FullType/);
+    assert.doesNotMatch(mysql, /sys\.|COLUMNPROPERTY|ISNULL|N'/);
+    assert.match(mssql, /WHERE c\.TABLE_SCHEMA = 'dbo' AND c\.TABLE_NAME = 'Order''s'/);
+    assert.match(mssql, /sys\.extended_properties/);
   });
 
   test('MySQL completion lists drop T-SQL-only entries and add MySQL ones', () => {

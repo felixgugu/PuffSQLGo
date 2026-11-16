@@ -26,6 +26,7 @@
 
       <div class="flex items-center space-x-1.5 flex-shrink-0">
         <SqButton
+          v-if="canEditColumns"
           type="button"
           :label="$t('columnEditor.addAction')"
           size="sm"
@@ -175,6 +176,8 @@
         <span>{{ $t('dataView.copyRowJson') }}</span>
       </button>
 
+      <!-- Column editing and ALTER templates are generated as T-SQL. -->
+      <template v-if="canEditColumns">
       <div class="my-1 border-t border-dark-750"></div>
 
       <button
@@ -287,6 +290,7 @@
           <Copy class="w-3 h-3" />
         </button>
       </div>
+      </template>
 
       <div class="my-1 border-t border-dark-750"></div>
 
@@ -829,6 +833,9 @@ function handleGridScroll(event: Event) {
   }
 }
 
+/** The column editor and the ALTER templates only exist for engines that implement them. */
+const canEditColumns = computed(() => connectionStore.activeDialect.capabilities.columnEditor);
+
 async function loadStructure() {
   const connId = connectionStore.activeConnectionId;
   const db = connectionStore.activeDatabase;
@@ -841,55 +848,7 @@ async function loadStructure() {
   error.value = null;
 
   try {
-    const escapedSchema = props.schema.replace(/'/g, "''");
-    const escapedTable = props.tableName.replace(/'/g, "''");
-
-    const sql = `
-SELECT 
-    c.ORDINAL_POSITION AS Ordinal,
-    c.COLUMN_NAME AS ColumnName,
-    c.DATA_TYPE AS DataType,
-    CASE 
-        WHEN c.DATA_TYPE IN ('nchar', 'nvarchar') THEN 
-            c.DATA_TYPE + '(' + CASE WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'MAX' ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS VARCHAR(10)) END + ')'
-        WHEN c.DATA_TYPE IN ('char', 'varchar', 'binary', 'varbinary') THEN 
-            c.DATA_TYPE + '(' + CASE WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'MAX' ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS VARCHAR(10)) END + ')'
-        WHEN c.DATA_TYPE IN ('decimal', 'numeric') THEN 
-            c.DATA_TYPE + '(' + CAST(c.NUMERIC_PRECISION AS VARCHAR(10)) + ', ' + CAST(c.NUMERIC_SCALE AS VARCHAR(10)) + ')'
-        WHEN c.DATA_TYPE IN ('datetime2', 'time', 'datetimeoffset') THEN 
-            c.DATA_TYPE + '(' + CAST(c.DATETIME_PRECISION AS VARCHAR(10)) + ')'
-        ELSE c.DATA_TYPE
-    END AS FullType,
-    c.CHARACTER_MAXIMUM_LENGTH AS MaxLength,
-    c.NUMERIC_PRECISION AS NumericPrecision,
-    c.NUMERIC_SCALE AS NumericScale,
-    CASE WHEN c.IS_NULLABLE = 'YES' THEN 'YES' ELSE 'NO' END AS IsNullable,
-    CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey,
-    ISNULL(COLUMNPROPERTY(OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)), c.COLUMN_NAME, 'IsIdentity'), 0) AS IsIdentity,
-    c.COLUMN_DEFAULT AS DefaultValue,
-    c.COLLATION_NAME AS Collation,
-    ISNULL(CAST((
-      SELECT ep.value
-      FROM sys.extended_properties ep
-      WHERE ep.class = 1
-        AND ep.major_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))
-        AND ep.minor_id = COLUMNPROPERTY(OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)), c.COLUMN_NAME, 'ColumnId')
-        AND ep.name = N'MS_Description'
-    ) AS nvarchar(4000)), N'') AS Description
-FROM INFORMATION_SCHEMA.COLUMNS c
-LEFT JOIN (
-    SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
-    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-        ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
-        AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
-    WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-) pk ON c.TABLE_SCHEMA = pk.TABLE_SCHEMA 
-    AND c.TABLE_NAME = pk.TABLE_NAME 
-    AND c.COLUMN_NAME = pk.COLUMN_NAME
-WHERE c.TABLE_SCHEMA = '${escapedSchema}' AND c.TABLE_NAME = '${escapedTable}'
-ORDER BY c.ORDINAL_POSITION;
-    `.trim();
+    const sql = connectionStore.getDialectFor(connId).structureSql(db, props.schema, props.tableName);
 
     const res = await queryService.executeQuery(connId, db, sql, null);
     if (res.messages.some((m) => m.level === 'error')) {
